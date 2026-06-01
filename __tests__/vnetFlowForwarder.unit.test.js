@@ -10,11 +10,39 @@ process.env.SOURCE_STORAGE_CONNECTION =
   'DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net';
 process.env.CURSOR_STORAGE_CONNECTION =
   'DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net';
-process.env.EVENTHUB_CONNECTION =
+process.env.EVENTHUB_CONSUMER_CONNECTION =
   'Endpoint=sb://test.servicebus.windows.net/;SharedAccessKeyName=test;SharedAccessKey=dGVzdA==';
 process.env.EVENTHUB_NAME = 'eh-vnetflow';
 process.env.VNETFLOWLOGS_RELAY_ENABLED = 'true';
-process.env.VNETFLOW_CONSUMER_ENABLED = 'true';
+process.env.VNETFLOWLOGS_FORWARDER_ENABLED = 'true';
+
+// Mock Azure SDK modules before requiring application modules
+jest.mock('@azure/event-hubs', () => ({
+  EventHubProducerClient: jest.fn().mockImplementation(() => ({
+    createBatch: jest.fn(),
+    sendBatch: jest.fn(),
+  })),
+}));
+
+jest.mock('@azure/data-tables', () => ({
+  TableClient: jest.fn().mockImplementation(() => ({
+    getEntity: jest.fn(),
+    upsertEntity: jest.fn(),
+  })),
+}));
+
+jest.mock('@azure/storage-blob', () => ({
+  BlobServiceClient: {
+    fromConnectionString: jest.fn().mockImplementation(() => ({
+      getContainerClient: jest.fn().mockReturnValue({
+        getBlobClient: jest.fn().mockReturnValue({
+          getBlockList: jest.fn(),
+          download: jest.fn(),
+        }),
+      }),
+    })),
+  },
+}));
 
 const parser = require('../VNetFlowForwarder/parser');
 const cursor = require('../VNetFlowForwarder/cursor');
@@ -402,5 +430,234 @@ describe('Config', () => {
     );
 
     config.sourceStorageConnection = orig;
+  });
+});
+
+// ─── Consumer Tests ────────────────────────────────────────────────────────
+
+describe('Consumer', () => {
+  const consumer = require('../VNetFlowForwarder/consumer');
+  const mockContext = {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  describe('consumerHandler', () => {
+    it('should process single event successfully', async () => {
+      const mockMessage = {
+        subject:
+          '/blobServices/default/containers/test/blobs/resource/PT1H.json',
+      };
+
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 0 });
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      await consumer.consumerHandler(mockMessage, mockContext);
+
+      expect(mockContext.log).toHaveBeenCalledWith(
+        expect.stringContaining('1 processed')
+      );
+    });
+
+    it('should process batch of events', async () => {
+      const mockMessages = [
+        { subject: '/blob1.json' },
+        { subject: '/blob2.json' },
+        { subject: '/blob3.json' },
+      ];
+
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 0 });
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      await consumer.consumerHandler(mockMessages, mockContext);
+
+      expect(mockContext.log).toHaveBeenCalledWith(
+        expect.stringContaining('3 processed')
+      );
+    });
+
+    it('should handle errors and increment failure counter', async () => {
+      const mockMessage = {
+        subject: '/blob-error.json',
+      };
+
+      jest.spyOn(delta, 'parseBlobPath').mockImplementation(() => {
+        throw new Error('Processing failed');
+      });
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: 'block-1',
+        failureCount: 1,
+      });
+      jest.spyOn(cursor, 'incrementFailure').mockResolvedValue();
+
+      await consumer.consumerHandler(mockMessage, mockContext);
+
+      expect(mockContext.error).toHaveBeenCalledWith(
+        expect.stringContaining('Processing failed')
+      );
+      expect(cursor.incrementFailure).toHaveBeenCalled();
+    });
+
+    it('should count skipped events', async () => {
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 3 });
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+
+      await consumer.consumerHandler({ subject: '/blob.json' }, mockContext);
+
+      expect(mockContext.log).toHaveBeenCalledWith(
+        expect.stringContaining('1 skipped')
+      );
+    });
+  });
+
+  describe('processEvent', () => {
+    it('should skip empty messages', async () => {
+      const result = await consumer.processEvent(null, mockContext);
+
+      expect(result).toBeNull();
+      expect(mockContext.warn).toHaveBeenCalledWith(
+        expect.stringContaining('empty message')
+      );
+    });
+
+    it('should skip messages without blob path', async () => {
+      const result = await consumer.processEvent({}, mockContext);
+
+      expect(result).toBeNull();
+      expect(mockContext.warn).toHaveBeenCalledWith(
+        expect.stringContaining('no blob path')
+      );
+    });
+
+    it('should skip poison events (failureCount >= 3)', async () => {
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: '',
+        failureCount: 3,
+      });
+
+      const result = await consumer.processEvent(
+        { subject: '/blob.json' },
+        mockContext
+      );
+
+      expect(result).toBeNull();
+      expect(mockContext.error).toHaveBeenCalledWith(
+        expect.stringContaining('poison event')
+      );
+    });
+
+    it('should return null for 404 errors on deleted blobs', async () => {
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: '',
+        failureCount: 0,
+      });
+      const error404 = new Error('Not found');
+      error404.statusCode = 404;
+      jest.spyOn(delta, 'downloadDelta').mockRejectedValue(error404);
+
+      const result = await consumer.processEvent(
+        { subject: '/blob.json' },
+        mockContext
+      );
+
+      expect(result).toBeNull();
+      expect(mockContext.warn).toHaveBeenCalled();
+    });
+
+    it('should advance cursor and return stats on successful processing', async () => {
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: 'block-1',
+        failureCount: 0,
+      });
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
+        data: '{"records":[{"record":1}]}',
+        lastBlockId: 'block-2',
+      });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 1 }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      const result = await consumer.processEvent(
+        { subject: '/blob.json' },
+        mockContext
+      );
+
+      expect(result.records).toBe(1);
+      expect(cursor.setCursor).toHaveBeenCalledWith('/blob.json', 'block-2');
+    });
+  });
+});
+
+// ─── Relay Tests ───────────────────────────────────────────────────────────
+
+describe('Relay', () => {
+  const relay = require('../VNetFlowForwarder/relay');
+  const mockContext = {
+    log: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    relay.resetClient();
+  });
+
+  describe('relayHandler', () => {
+    it('should skip events without subject', async () => {
+      const mockEvent = {
+        data: { someData: 'value' },
+      };
+
+      await relay.relayHandler(mockEvent, mockContext);
+
+      expect(mockContext.warn).toHaveBeenCalledWith(
+        expect.stringContaining('no subject')
+      );
+    });
+  });
+});
+
+// ─── Index Tests ───────────────────────────────────────────────────────────
+
+describe('Index - Function Registration', () => {
+  it('should export relay and consumer handlers', () => {
+    const index = require('../VNetFlowForwarder/index');
+
+    expect(index.relayHandler).toBeDefined();
+    expect(index.consumerHandler).toBeDefined();
+    expect(typeof index.relayHandler).toBe('function');
+    expect(typeof index.consumerHandler).toBe('function');
   });
 });
