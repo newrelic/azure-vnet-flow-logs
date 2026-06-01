@@ -143,7 +143,7 @@
 
         "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
 
-        "vnetFlowLogsForwarderFunctionArtifact": "https://github.com/newrelic/newrelic-azure-functions/releases/latest/download/VNetFlowForwarder.zip",
+        "vnetFlowLogsForwarderFunctionArtifact": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
 
         "privateNetworkASP": {
             "kind": "app",

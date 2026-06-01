@@ -79,7 +79,7 @@ var functionStorageAccountName = 'nrvnetflfn${uniqueResourceNameSuffix}'
 var servicePlanName = 'nrvnetflowlogs-serviceplan-${uniqueResourceNameSuffix}'
 var functionAppName = 'nrvnetflowlogs-forwarder-${uniqueResourceNameSuffix}'
 var sourceStorageAccountId = sourceStorageAccountNameResolved.id
-var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/newrelic-azure-functions/releases/latest/download/VNetFlowForwarder.zip'
+var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
 var privateNetworkASP = {
   kind: 'app'
   properties: {
