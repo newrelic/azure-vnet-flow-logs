@@ -1,6 +1,6 @@
 # Third Party Notices
 
-The newrelic-azure-functions uses source code from third party libraries which carry
+The azure-vnet-flow-logs uses source code from third party libraries which carry
 their own copyright notices and license terms. These notices are provided
 below.
 
@@ -8,7 +8,7 @@ In the event that a required notice is missing or incorrect, please notify us
 by e-mailing [open-source@newrelic.com](mailto:open-source@newrelic.com).
 
 For any licenses that require the disclosure of source
-code, the source code can be found at [git+https://github.com/newrelic-experimental/newrelic-azure-functions.git](git+https://github.com/newrelic-experimental/newrelic-azure-functions.git).
+code, the source code can be found at [git+https://github.com/newrelic/azure-vnet-flow-logs.git](git+https://github.com/newrelic/azure-vnet-flow-logs.git).
 
 ## Content
 

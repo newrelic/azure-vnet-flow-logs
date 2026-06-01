@@ -1,7 +1,7 @@
 {
   "lastUpdated": "Tue Apr 28 2026 11:49:05 GMT+0000 (Coordinated Universal Time)",
-  "projectName": "newrelic-azure-functions",
-  "projectUrl": "git+https://github.com/newrelic-experimental/newrelic-azure-functions.git",
+  "projectName": "azure-vnet-flow-logs",
+  "projectUrl": "git+https://github.com/newrelic/azure-vnet-flow-logs.git",
   "includeOptDeps": false,
   "includeDev": true,
   "dependencies": {
