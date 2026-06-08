@@ -29,6 +29,11 @@ const config = {
   relayEnabled: process.env.VNETFLOWLOGS_RELAY_ENABLED === 'true',
   consumerEnabled: process.env.VNETFLOWLOGS_FORWARDER_ENABLED === 'true',
 
+  // Cursor cleanup
+  cursorCleanupEnabled: process.env.CURSOR_CLEANUP_ENABLED !== 'false',
+  cursorRetentionHours: parseInt(process.env.CURSOR_RETENTION_HOURS, 10) || 48,
+  cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
+
   // Logging
   debugEnabled: process.env.DEBUG_ENABLED === 'true',
 

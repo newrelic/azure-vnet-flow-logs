@@ -121,20 +121,50 @@ async function incrementFailure(blobPath, lastBlockId, currentFailureCount) {
 }
 
 /**
+ * Delete stale cursor entries older than the specified retention period.
+ *
+ * @param {number} retentionHours - Delete cursors not updated within this many hours
+ * @returns {Promise<{deleted: number, errors: number}>}
+ */
+async function cleanupStaleCursors(retentionHours) {
+  const client = getTableClient();
+  const cutoff = new Date(
+    Date.now() - retentionHours * 60 * 60 * 1000
+  ).toISOString();
+
+  let deleted = 0;
+  let errors = 0;
+
+  const entities = client.listEntities({
+    queryOptions: {
+      filter: `PartitionKey eq 'vnetflowlogs' and updatedAt lt '${cutoff}'`,
+    },
+  });
+
+  for await (const entity of entities) {
+    try {
+      await client.deleteEntity(entity.partitionKey, entity.rowKey);
+      deleted++;
+    } catch (err) {
+      errors++;
+    }
+  }
+
+  return { deleted, errors };
+}
+
+/**
  * Reset the table client (for testing).
  */
 function resetClient() {
   tableClient = null;
 }
 
-// TODO: Implement cursor cleanup strategy — rows accumulate over time (one per
-// hourly blob). Consider a scheduled function or TTL to delete entries older
-// than a configurable retention period (e.g. 7 days).
-
 module.exports = {
   getCursor,
   setCursor,
   incrementFailure,
+  cleanupStaleCursors,
   encodeKeys,
   resetClient,
   // Exposed for testing
