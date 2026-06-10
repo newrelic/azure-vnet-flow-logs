@@ -165,9 +165,16 @@ function parseLineByLine(text) {
 /**
  * Extract metadata from a blob path.
  *
- * Example path: resourceId=/SUBSCRIPTIONS/{sub}/RESOURCEGROUPS/{rg}/PROVIDERS/
- *   MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/{name}/y=2024/m=01/d=15/h=10/
- *   m=00/macAddress={mac}/PT1H.json
+ * Supports two path formats:
+ *
+ * 1. NSG flow logs:
+ *    resourceId=/SUBSCRIPTIONS/{sub}/RESOURCEGROUPS/{rg}/PROVIDERS/
+ *    MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/{name}/y=2024/m=01/d=15/h=10/
+ *    m=00/macAddress={mac}/PT1H.json
+ *
+ * 2. VNet flow logs:
+ *    flowLogResourceID=/{SUB}_{RG}/{NETWORKWATCHER_REGION_FLOWLOGNAME}/
+ *    y=2026/m=06/d=09/h=07/m=00/macAddress={mac}/PT1H.json
  *
  * @param {string} blobPath - The blob name within the container
  * @returns {Object} Extracted metadata
@@ -191,6 +198,21 @@ function extractMetadataFromPath(blobPath) {
   if (providerMatch) {
     metadata.resourceType = providerMatch[1];
     metadata.resourceName = providerMatch[2];
+  }
+
+  // VNet flow log path format: flowLogResourceID=/{SUB}_{RG}/{NETWORKWATCHER_REGION_NAME}/...
+  if (!metadata.subscriptionId || !metadata.resourceGroup) {
+    const vnetFlowMatch = blobPath.match(
+      /flowLogResourceID=\/([^_]+)_([^/]+)\/([^/]+)/i
+    );
+    if (vnetFlowMatch) {
+      if (!metadata.subscriptionId) {
+        metadata.subscriptionId = vnetFlowMatch[1].toLowerCase();
+      }
+      if (!metadata.resourceGroup) {
+        metadata.resourceGroup = vnetFlowMatch[2].toLowerCase();
+      }
+    }
   }
 
   // Extract MAC address
@@ -251,11 +273,31 @@ function transformRecords(records, pathMetadata) {
   const logEntries = [];
 
   for (const record of records) {
+    // Use targetResourceID from record to fill missing path metadata
+    // targetResourceID represents the actual VNet resource, so prefer it over
+    // blob path metadata (which may point to NetworkWatcherRG instead of the VNet's RG)
+    const enriched = { ...pathMetadata };
+    if (record.targetResourceID) {
+      const targetMatch = record.targetResourceID.match(
+        /providers\/Microsoft\.Network\/([^/]+)\/([^/]+)/i
+      );
+      if (targetMatch) {
+        if (!enriched.resourceType) enriched.resourceType = targetMatch[1];
+        if (!enriched.resourceName) enriched.resourceName = targetMatch[2];
+      }
+      // Always prefer targetResourceID for subscriptionId and resourceGroup
+      // since the blob path may reference the NetworkWatcher RG, not the VNet's RG
+      const subMatch = record.targetResourceID.match(/subscriptions\/([^/]+)/i);
+      if (subMatch) enriched.subscriptionId = subMatch[1].toLowerCase();
+      const rgMatch = record.targetResourceID.match(/resourceGroups\/([^/]+)/i);
+      if (rgMatch) enriched.resourceGroup = rgMatch[1];
+    }
+
     const baseAttrs = {
-      'azure.subscriptionId': pathMetadata.subscriptionId || '',
-      'azure.resourceGroup': pathMetadata.resourceGroup || '',
-      'azure.resourceType': pathMetadata.resourceType || '',
-      'azure.resourceName': pathMetadata.resourceName || '',
+      'azure.subscriptionId': enriched.subscriptionId || '',
+      'azure.resourceGroup': enriched.resourceGroup || '',
+      'azure.resourceType': enriched.resourceType || '',
+      'azure.resourceName': enriched.resourceName || '',
       'azure.macAddress': pathMetadata.macAddress || record.macAddress || '',
       'azure.category': record.category || 'FlowLogFlowEvent',
       'azure.operationName': record.operationName || '',
