@@ -63,6 +63,13 @@ param maximumInstanceCount int = 100
 ])
 param instanceMemoryMB int = 2048
 
+@description('URL of the function ZIP package. Treated as a credential (e.g., a SAS URL) and injected into the deployment script. Default points to a temporary testing build; override for production.')
+@secure()
+param packageUri string = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
+
+@description('Internal. Generated automatically — do not set manually. Forces the deployment script to re-run on each deployment so the latest package is pushed to OneDeploy.')
+param deploymentScriptForceUpdateTag string = utcNow()
+
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var location_var = (empty(location) ? resourceGroup().location : location)
 var createNewSourceStorage = empty(sourceStorageAccountName)
@@ -88,6 +95,12 @@ var cursorTableName = 'nrvnetflowlogscursors'
 var functionStorageAccountName = 'nrvnetflfn${uniqueResourceNameSuffix}'
 var servicePlanName = 'nrvnetflowlogs-serviceplan-${uniqueResourceNameSuffix}'
 var functionAppName = 'nrvnetflowlogs-forwarder-${uniqueResourceNameSuffix}'
+var deploymentIdentityName = 'nrvnetflowlogs-deploy-id-${uniqueResourceNameSuffix}'
+var deploymentScriptName = 'nrvnetflowlogs-deploy-script-${uniqueResourceNameSuffix}'
+var websiteContributorRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'de139f84-1756-47ae-9be6-808fbbe84772'
+)
 var sourceStorageAccountId = sourceStorageAccountNameResolved.id
 var flexConsumptionASP = {
   kind: 'functionapp,linux'
@@ -186,9 +199,11 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
   name: '${eventGridSubscriptionName_var}'
   properties: {
     destination: {
-      endpointType: 'EventHub'
+      endpointType: 'AzureFunction'
       properties: {
-        resourceId: eventHubNamespaceName_eventHub.id
+        resourceId: resourceId('Microsoft.Web/sites/functions', functionAppName, 'VNetFlowLogsRelay')
+        maxEventsPerBatch: 1
+        preferredBatchSizeInKilobytes: 64
       }
     }
     filter: {
@@ -214,6 +229,9 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
       eventTimeToLiveInMinutes: 1440
     }
   }
+  dependsOn: [
+    deploymentScript
+  ]
 }
 
 resource cursorStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
@@ -457,4 +475,66 @@ resource Microsoft_Web_sites_functionAppName_Microsoft_Storage_storageAccounts_c
     principalId: reference(functionApp.id, '2023-12-01', 'Full').identity.principalId
     principalType: 'ServicePrincipal'
   }
+}
+
+resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: deploymentIdentityName
+  location: location_var
+}
+
+resource Microsoft_Web_sites_functionAppName_deploymentIdentityName_WebsiteContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: functionApp
+  name: guid(functionApp.id, deploymentIdentityName, 'WebsiteContributor')
+  properties: {
+    roleDefinitionId: websiteContributorRoleId
+    principalId: reference(deploymentIdentity.id, '2023-01-31', 'Full').properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
+  name: deploymentScriptName
+  location: location_var
+  kind: 'AzureCLI'
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${deploymentIdentity.id}': {}
+    }
+  }
+  properties: {
+    azCliVersion: '2.61.0'
+    timeout: 'PT30M'
+    retentionInterval: 'PT1H'
+    cleanupPreference: 'OnSuccess'
+    forceUpdateTag: deploymentScriptForceUpdateTag
+    environmentVariables: [
+      {
+        name: 'ZIP_URL'
+        secureValue: packageUri
+      }
+      {
+        name: 'FUNCTION_APP'
+        value: functionAppName
+      }
+      {
+        name: 'RESOURCE_GROUP'
+        value: resourceGroup().name
+      }
+      {
+        name: 'TARGET_FUNCTION'
+        value: 'VNetFlowLogsRelay'
+      }
+    ]
+    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 900\n\necho "Waiting for $TARGET_FUNCTION to register on the function host..."\nfor i in $(seq 1 60); do\n  if az functionapp function show \\\n       --resource-group "$RESOURCE_GROUP" \\\n       --name "$FUNCTION_APP" \\\n       --function-name "$TARGET_FUNCTION" >/dev/null 2>&1; then\n    echo "$TARGET_FUNCTION registered."\n    exit 0\n  fi\n  echo \'Function not yet registered, sleeping 10s...\'\n  sleep 10\ndone\n\necho "Timed out waiting for $TARGET_FUNCTION to register after 10 minutes."\nexit 1\n'
+  }
+  dependsOn: [
+    functionApp
+
+    extensionResourceId(
+      functionApp.id,
+      'Microsoft.Authorization/roleAssignments',
+      guid(functionApp.id, deploymentIdentityName, 'WebsiteContributor')
+    )
+  ]
 }
