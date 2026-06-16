@@ -128,6 +128,20 @@
             "metadata": {
                 "description": "Optional. Memory allocation per instance in MB. Recommended: 2048MB."
             }
+        },
+        "packageUri": {
+            "type": "securestring",
+            "defaultValue": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
+            "metadata": {
+                "description": "URL of the function ZIP package. Treated as a credential (e.g., a SAS URL) and injected into the deployment script. Default points to a temporary testing build; override for production."
+            }
+        },
+        "deploymentScriptForceUpdateTag": {
+            "type": "string",
+            "defaultValue": "[utcNow()]",
+            "metadata": {
+                "description": "Internal. Generated automatically — do not set manually. Forces the deployment script to re-run on each deployment so the latest package is pushed to OneDeploy."
+            }
         }
     },
     "variables": {
@@ -154,6 +168,10 @@
         "functionStorageAccountName": "[concat('nrvnetflfn', variables('uniqueResourceNameSuffix'))]",
         "servicePlanName": "[concat('nrvnetflowlogs-serviceplan-', variables('uniqueResourceNameSuffix'))]",
         "functionAppName": "[concat('nrvnetflowlogs-forwarder-', variables('uniqueResourceNameSuffix'))]",
+
+        "deploymentIdentityName": "[concat('nrvnetflowlogs-deploy-id-', variables('uniqueResourceNameSuffix'))]",
+        "deploymentScriptName": "[concat('nrvnetflowlogs-deploy-script-', variables('uniqueResourceNameSuffix'))]",
+        "websiteContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'de139f84-1756-47ae-9be6-808fbbe84772')]",
 
         "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
 
@@ -274,13 +292,15 @@
             "name": "[concat(variables('eventGridSystemTopicName'), '/', variables('eventGridSubscriptionName'))]",
             "dependsOn": [
                 "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
-                "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+                "[resourceId('Microsoft.Resources/deploymentScripts', variables('deploymentScriptName'))]"
             ],
             "properties": {
                 "destination": {
-                    "endpointType": "EventHub",
+                    "endpointType": "AzureFunction",
                     "properties": {
-                        "resourceId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+                        "resourceId": "[resourceId('Microsoft.Web/sites/functions', variables('functionAppName'), 'VNetFlowLogsRelay')]",
+                        "maxEventsPerBatch": 1,
+                        "preferredBatchSizeInKilobytes": 64
                     }
                 },
                 "filter": {
@@ -570,6 +590,71 @@
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]",
                 "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'Full').identity.principalId]",
                 "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "apiVersion": "2023-01-31",
+            "name": "[variables('deploymentIdentityName')]",
+            "location": "[variables('location')]"
+        },
+        {
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('deploymentIdentityName'), 'WebsiteContributor')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]"
+            ],
+            "scope": "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+            "properties": {
+                "roleDefinitionId": "[variables('websiteContributorRoleId')]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName')), '2023-01-31', 'Full').properties.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "type": "Microsoft.Resources/deploymentScripts",
+            "apiVersion": "2023-08-01",
+            "name": "[variables('deploymentScriptName')]",
+            "location": "[variables('location')]",
+            "kind": "AzureCLI",
+            "identity": {
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]": {}
+                }
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
+                "[extensionResourceId(resourceId('Microsoft.Web/sites', variables('functionAppName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('deploymentIdentityName'), 'WebsiteContributor'))]"
+            ],
+            "properties": {
+                "azCliVersion": "2.61.0",
+                "timeout": "PT30M",
+                "retentionInterval": "PT1H",
+                "cleanupPreference": "OnSuccess",
+                "forceUpdateTag": "[parameters('deploymentScriptForceUpdateTag')]",
+                "environmentVariables": [
+                    {
+                        "name": "ZIP_URL",
+                        "secureValue": "[parameters('packageUri')]"
+                    },
+                    {
+                        "name": "FUNCTION_APP",
+                        "value": "[variables('functionAppName')]"
+                    },
+                    {
+                        "name": "RESOURCE_GROUP",
+                        "value": "[resourceGroup().name]"
+                    },
+                    {
+                        "name": "TARGET_FUNCTION",
+                        "value": "VNetFlowLogsRelay"
+                    }
+                ],
+                "scriptContent": "set -euo pipefail\n\necho 'Downloading package via python urllib (curl not preinstalled, python is)...'\npython3 -c \"import os, urllib.request; urllib.request.urlretrieve(os.environ['ZIP_URL'], '/tmp/package.zip')\"\nls -la /tmp/package.zip\n\necho 'Deploying via az functionapp deployment source config-zip (Flex-supported path)...'\naz functionapp deployment source config-zip \\\n  --resource-group \"$RESOURCE_GROUP\" \\\n  --name \"$FUNCTION_APP\" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 900\n\necho \"Waiting for $TARGET_FUNCTION to register on the function host...\"\nfor i in $(seq 1 60); do\n  if az functionapp function show \\\n       --resource-group \"$RESOURCE_GROUP\" \\\n       --name \"$FUNCTION_APP\" \\\n       --function-name \"$TARGET_FUNCTION\" >/dev/null 2>&1; then\n    echo \"$TARGET_FUNCTION registered.\"\n    exit 0\n  fi\n  echo 'Function not yet registered, sleeping 10s...'\n  sleep 10\ndone\n\necho \"Timed out waiting for $TARGET_FUNCTION to register after 10 minutes.\"\nexit 1\n"
             }
         }
     ]
