@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+require_cmds() {
+  local missing=0
+  for c in az jq curl uuidgen zip; do
+    if ! command -v "$c" >/dev/null 2>&1; then
+      echo "Missing required command: $c"
+      missing=1
+    fi
+  done
+  if [[ $missing -ne 0 ]]; then
+    exit 1
+  fi
+}
+
+log() {
+  echo "[resource] $*"
+}
+
+create_resource_group() {
+  log "Creating resource group: ${RESOURCE_GROUP}"
+  az group create \
+    --name "${RESOURCE_GROUP}" \
+    --location "${AZURE_REGION}" \
+    --tags "${TAG_PURPOSE}" "${TAG_CREATED_BY}" >/dev/null
+}
+
+resolve_network_watcher() {
+  if [[ -n "${NETWORK_WATCHER_NAME}" ]]; then
+    if [[ -z "${NETWORK_WATCHER_RG}" ]]; then
+      NETWORK_WATCHER_RG="NetworkWatcherRG"
+    fi
+    return 0
+  fi
+
+  NETWORK_WATCHER_NAME=$(az network watcher list --query "[?location=='${AZURE_REGION}'].name | [0]" -o tsv)
+  NETWORK_WATCHER_RG=$(az network watcher list --query "[?location=='${AZURE_REGION}'].resourceGroup | [0]" -o tsv)
+  if [[ -z "${NETWORK_WATCHER_NAME}" || "${NETWORK_WATCHER_NAME}" == "None" ]]; then
+    echo "No Network Watcher found in ${AZURE_REGION}. Set NETWORK_WATCHER_NAME explicitly."
+    exit 1
+  fi
+  if [[ -z "${NETWORK_WATCHER_RG}" || "${NETWORK_WATCHER_RG}" == "None" ]]; then
+    NETWORK_WATCHER_RG="NetworkWatcherRG"
+  fi
+  export NETWORK_WATCHER_NAME
+  export NETWORK_WATCHER_RG
+}
+
+wait_for_blob() {
+  log "Waiting for first flow-log blob (timeout ${TEST_TIMEOUT_FLOW_LOGS}s)"
+  local deadline=$(( $(date +%s) + TEST_TIMEOUT_FLOW_LOGS ))
+  local account_key
+  account_key=$(az storage account keys list --resource-group "${RESOURCE_GROUP}" --account-name "${SOURCE_STORAGE}" --query "[0].value" -o tsv)
+
+  while [[ $(date +%s) -lt $deadline ]]; do
+    local blob
+    blob=$(az storage blob list \
+      --account-name "${SOURCE_STORAGE}" \
+      --account-key "${account_key}" \
+      --container-name insights-logs-flowlogflowevent \
+      --num-results 1 \
+      --query "[0].name" -o tsv 2>/dev/null || true)
+
+    if [[ -n "${blob}" && "${blob}" != "None" ]]; then
+      echo "${blob}"
+      return 0
+    fi
+    sleep "${FLOW_LOG_POLL_INTERVAL}"
+  done
+
+  echo "Timed out waiting for flow log blob"
+  return 1
+}
+
+generate_traffic() {
+  log "Generating traffic from VM"
+  local marker
+  marker=$(uuidgen)
+  echo "${marker}" > "${MARKER_FILE}"
+
+  az vm run-command invoke \
+    --resource-group "${RESOURCE_GROUP}" \
+    --name "${VM_NAME}" \
+    --command-id RunShellScript \
+    --scripts "set -e; for i in 1 2 3 4 5; do curl -sS -m 10 https://www.microsoft.com >/dev/null || true; done; echo ${marker}" >/dev/null
+
+  echo "${marker}"
+}
+
+get_vm_ip() {
+  az vm show -d --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" --query publicIps -o tsv
+}
+
+download_blob() {
+  local blob_name="$1"
+  local account_key
+  account_key=$(az storage account keys list --resource-group "${RESOURCE_GROUP}" --account-name "${SOURCE_STORAGE}" --query "[0].value" -o tsv)
+
+  az storage blob download \
+    --account-name "${SOURCE_STORAGE}" \
+    --account-key "${account_key}" \
+    --container-name insights-logs-flowlogflowevent \
+    --name "${blob_name}" \
+    --file "${RAW_BLOB_FILE}" \
+    --overwrite >/dev/null
+}
