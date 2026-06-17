@@ -62,17 +62,6 @@
                 "description": "Optional. The Logs API endpoint for your New Relic account region. Select US (default), EU, or JP endpoint."
             }
         },
-        "scalingMode": {
-            "type": "string",
-            "allowedValues": [
-                "Basic",
-                "Enterprise"
-            ],
-            "defaultValue": "Basic",
-            "metadata": {
-                "description": "Optional. The scaling for the resources. In Flex Consumption plan, both Basic and Enterprise modes use the same FC1 SKU with different instance limits."
-            }
-        },
         "newRelicTags": {
             "type": "string",
             "defaultValue": "",
@@ -128,20 +117,6 @@
             "metadata": {
                 "description": "Optional. Memory allocation per instance in MB. Recommended: 2048MB."
             }
-        },
-        "packageUri": {
-            "type": "securestring",
-            "defaultValue": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
-            "metadata": {
-                "description": "URL of the function ZIP package. Treated as a credential (e.g., a SAS URL) and injected into the deployment script. Default points to a temporary testing build; override for production."
-            }
-        },
-        "deploymentScriptForceUpdateTag": {
-            "type": "string",
-            "defaultValue": "[utcNow()]",
-            "metadata": {
-                "description": "Internal. Generated automatically — do not set manually. Forces the deployment script to re-run on each deployment so the latest package is pushed to OneDeploy."
-            }
         }
     },
     "variables": {
@@ -172,6 +147,7 @@
         "deploymentIdentityName": "[concat('nrvnetflowlogs-deploy-id-', variables('uniqueResourceNameSuffix'))]",
         "deploymentScriptName": "[concat('nrvnetflowlogs-deploy-script-', variables('uniqueResourceNameSuffix'))]",
         "websiteContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'de139f84-1756-47ae-9be6-808fbbe84772')]",
+        "vnetFlowLogsForwarderFunctionArtifact": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
 
         "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
 
@@ -231,8 +207,6 @@
             },
             "properties": {
                 "minimumTlsVersion": "1.2",
-                "isAutoInflateEnabled": "[if(equals(parameters('scalingMode'), 'Enterprise'), true(), false())]",
-                "maximumThroughputUnits": "[if(equals(parameters('scalingMode'), 'Enterprise'), 40, 0)]",
                 "zoneRedundant": false
             }
         },
@@ -247,7 +221,7 @@
             ],
             "properties": {
                 "messageRetentionInDays": 1,
-                "partitionCount": "[if(equals(parameters('scalingMode'), 'Enterprise'), 32, 4)]"
+                "partitionCount": 4
             }
         },
         {
@@ -284,47 +258,6 @@
             "properties": {
                 "source": "[variables('sourceStorageAccountId')]",
                 "topicType": "Microsoft.Storage.StorageAccounts"
-            }
-        },
-        {
-            "type": "Microsoft.EventGrid/systemTopics/eventSubscriptions",
-            "apiVersion": "2021-12-01",
-            "name": "[concat(variables('eventGridSystemTopicName'), '/', variables('eventGridSubscriptionName'))]",
-            "dependsOn": [
-                "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
-                "[resourceId('Microsoft.Resources/deploymentScripts', variables('deploymentScriptName'))]"
-            ],
-            "properties": {
-                "destination": {
-                    "endpointType": "AzureFunction",
-                    "properties": {
-                        "resourceId": "[resourceId('Microsoft.Web/sites/functions', variables('functionAppName'), 'VNetFlowLogsRelay')]",
-                        "maxEventsPerBatch": 1,
-                        "preferredBatchSizeInKilobytes": 64
-                    }
-                },
-                "filter": {
-                    "includedEventTypes": [
-                        "Microsoft.Storage.BlobCreated"
-                    ],
-                    "enableAdvancedFilteringOnArrays": true,
-                    "advancedFilters": [
-                        {
-                            "operatorType": "StringContains",
-                            "key": "subject",
-                            "values": [
-                                "insights-logs-flowlogflowevent"
-                            ]
-                        }
-                    ],
-                    "subjectEndsWith": "PT1H.json"
-                },
-                "labels": [],
-                "eventDeliverySchema": "EventGridSchema",
-                "retryPolicy": {
-                    "maxDeliveryAttempts": 30,
-                    "eventTimeToLiveInMinutes": 1440
-                }
             }
         },
         {
@@ -635,11 +568,10 @@
                 "timeout": "PT30M",
                 "retentionInterval": "PT1H",
                 "cleanupPreference": "OnSuccess",
-                "forceUpdateTag": "[parameters('deploymentScriptForceUpdateTag')]",
                 "environmentVariables": [
                     {
                         "name": "ZIP_URL",
-                        "secureValue": "[parameters('packageUri')]"
+                        "value": "[variables('vnetFlowLogsForwarderFunctionArtifact')]"
                     },
                     {
                         "name": "FUNCTION_APP",
@@ -655,6 +587,47 @@
                     }
                 ],
                 "scriptContent": "set -euo pipefail\n\necho 'Downloading package via python urllib (curl not preinstalled, python is)...'\npython3 -c \"import os, urllib.request; urllib.request.urlretrieve(os.environ['ZIP_URL'], '/tmp/package.zip')\"\nls -la /tmp/package.zip\n\necho 'Deploying via az functionapp deployment source config-zip (Flex-supported path)...'\naz functionapp deployment source config-zip \\\n  --resource-group \"$RESOURCE_GROUP\" \\\n  --name \"$FUNCTION_APP\" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 900\n\necho \"Waiting for $TARGET_FUNCTION to register on the function host...\"\nfor i in $(seq 1 60); do\n  if az functionapp function show \\\n       --resource-group \"$RESOURCE_GROUP\" \\\n       --name \"$FUNCTION_APP\" \\\n       --function-name \"$TARGET_FUNCTION\" >/dev/null 2>&1; then\n    echo \"$TARGET_FUNCTION registered.\"\n    exit 0\n  fi\n  echo 'Function not yet registered, sleeping 10s...'\n  sleep 10\ndone\n\necho \"Timed out waiting for $TARGET_FUNCTION to register after 10 minutes.\"\nexit 1\n"
+            }
+        },
+        {
+            "type": "Microsoft.EventGrid/systemTopics/eventSubscriptions",
+            "apiVersion": "2021-12-01",
+            "name": "[concat(variables('eventGridSystemTopicName'), '/', variables('eventGridSubscriptionName'))]",
+            "dependsOn": [
+                "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
+                "[resourceId('Microsoft.Resources/deploymentScripts', variables('deploymentScriptName'))]"
+            ],
+            "properties": {
+                "destination": {
+                    "endpointType": "AzureFunction",
+                    "properties": {
+                        "resourceId": "[resourceId('Microsoft.Web/sites/functions', variables('functionAppName'), 'VNetFlowLogsRelay')]",
+                        "maxEventsPerBatch": 1,
+                        "preferredBatchSizeInKilobytes": 64
+                    }
+                },
+                "filter": {
+                    "includedEventTypes": [
+                        "Microsoft.Storage.BlobCreated"
+                    ],
+                    "enableAdvancedFilteringOnArrays": true,
+                    "advancedFilters": [
+                        {
+                            "operatorType": "StringContains",
+                            "key": "subject",
+                            "values": [
+                                "insights-logs-flowlogflowevent"
+                            ]
+                        }
+                    ],
+                    "subjectEndsWith": "PT1H.json"
+                },
+                "labels": [],
+                "eventDeliverySchema": "EventGridSchema",
+                "retryPolicy": {
+                    "maxDeliveryAttempts": 30,
+                    "eventTimeToLiveInMinutes": 1440
+                }
             }
         }
     ]

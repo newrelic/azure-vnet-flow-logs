@@ -28,13 +28,6 @@ param location string = ''
 ])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
-@description('Optional. The scaling for the resources. In Flex Consumption plan, both Basic and Enterprise modes use the same FC1 SKU with different instance limits.')
-@allowed([
-  'Basic'
-  'Enterprise'
-])
-param scalingMode string = 'Basic'
-
 @description('Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network).')
 param newRelicTags string = ''
 
@@ -62,13 +55,6 @@ param maximumInstanceCount int = 100
   4096
 ])
 param instanceMemoryMB int = 2048
-
-@description('URL of the function ZIP package. Treated as a credential (e.g., a SAS URL) and injected into the deployment script. Default points to a temporary testing build; override for production.')
-@secure()
-param packageUri string = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
-
-@description('Internal. Generated automatically — do not set manually. Forces the deployment script to re-run on each deployment so the latest package is pushed to OneDeploy.')
-param deploymentScriptForceUpdateTag string = utcNow()
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var location_var = (empty(location) ? resourceGroup().location : location)
@@ -101,6 +87,7 @@ var websiteContributorRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'de139f84-1756-47ae-9be6-808fbbe84772'
 )
+var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
 var sourceStorageAccountId = sourceStorageAccountNameResolved.id
 var flexConsumptionASP = {
   kind: 'functionapp,linux'
@@ -152,8 +139,6 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
   }
   properties: {
     minimumTlsVersion: '1.2'
-    isAutoInflateEnabled: ((scalingMode == 'Enterprise') ? true : false)
-    maximumThroughputUnits: ((scalingMode == 'Enterprise') ? 40 : 0)
     zoneRedundant: false
   }
 }
@@ -164,7 +149,7 @@ resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs
   location: location_var
   properties: {
     messageRetentionInDays: 1
-    partitionCount: ((scalingMode == 'Enterprise') ? 32 : 4)
+    partitionCount: 4
   }
 }
 
@@ -192,46 +177,6 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
     source: sourceStorageAccountId
     topicType: 'Microsoft.Storage.StorageAccounts'
   }
-}
-
-resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2021-12-01' = {
-  parent: eventGridSystemTopic
-  name: '${eventGridSubscriptionName_var}'
-  properties: {
-    destination: {
-      endpointType: 'AzureFunction'
-      properties: {
-        resourceId: resourceId('Microsoft.Web/sites/functions', functionAppName, 'VNetFlowLogsRelay')
-        maxEventsPerBatch: 1
-        preferredBatchSizeInKilobytes: 64
-      }
-    }
-    filter: {
-      includedEventTypes: [
-        'Microsoft.Storage.BlobCreated'
-      ]
-      enableAdvancedFilteringOnArrays: true
-      advancedFilters: [
-        {
-          operatorType: 'StringContains'
-          key: 'subject'
-          values: [
-            'insights-logs-flowlogflowevent'
-          ]
-        }
-      ]
-      subjectEndsWith: 'PT1H.json'
-    }
-    labels: []
-    eventDeliverySchema: 'EventGridSchema'
-    retryPolicy: {
-      maxDeliveryAttempts: 30
-      eventTimeToLiveInMinutes: 1440
-    }
-  }
-  dependsOn: [
-    deploymentScript
-  ]
 }
 
 resource cursorStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
@@ -507,11 +452,10 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     timeout: 'PT30M'
     retentionInterval: 'PT1H'
     cleanupPreference: 'OnSuccess'
-    forceUpdateTag: deploymentScriptForceUpdateTag
     environmentVariables: [
       {
         name: 'ZIP_URL'
-        secureValue: packageUri
+        value: vnetFlowLogsForwarderFunctionArtifact
       }
       {
         name: 'FUNCTION_APP'
@@ -536,5 +480,45 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
       'Microsoft.Authorization/roleAssignments',
       guid(functionApp.id, deploymentIdentityName, 'WebsiteContributor')
     )
+  ]
+}
+
+resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2021-12-01' = {
+  parent: eventGridSystemTopic
+  name: '${eventGridSubscriptionName_var}'
+  properties: {
+    destination: {
+      endpointType: 'AzureFunction'
+      properties: {
+        resourceId: resourceId('Microsoft.Web/sites/functions', functionAppName, 'VNetFlowLogsRelay')
+        maxEventsPerBatch: 1
+        preferredBatchSizeInKilobytes: 64
+      }
+    }
+    filter: {
+      includedEventTypes: [
+        'Microsoft.Storage.BlobCreated'
+      ]
+      enableAdvancedFilteringOnArrays: true
+      advancedFilters: [
+        {
+          operatorType: 'StringContains'
+          key: 'subject'
+          values: [
+            'insights-logs-flowlogflowevent'
+          ]
+        }
+      ]
+      subjectEndsWith: 'PT1H.json'
+    }
+    labels: []
+    eventDeliverySchema: 'EventGridSchema'
+    retryPolicy: {
+      maxDeliveryAttempts: 30
+      eventTimeToLiveInMinutes: 1440
+    }
+  }
+  dependsOn: [
+    deploymentScript
   ]
 }
