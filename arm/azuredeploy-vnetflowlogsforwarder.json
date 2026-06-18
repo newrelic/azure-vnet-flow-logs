@@ -90,6 +90,15 @@
                 "description": "Optional. Maximum number of events to process in a single batch from Event Hub."
             }
         },
+        "eventHubPartitionCount": {
+            "type": "int",
+            "defaultValue": 32,
+            "minValue": 1,
+            "maxValue": 32,
+            "metadata": {
+                "description": "Optional. Number of Event Hub partitions to provision. Sets the maximum parallelism for the consumer function (one Flex Consumption instance can read from each partition concurrently). Default 32 is the Standard tier ceiling and adds no cost. Lower values reduce parallelism only; partition count is fixed at hub creation and cannot be changed later."
+            }
+        },
         "debugEnabled": {
             "type": "bool",
             "defaultValue": false,
@@ -219,7 +228,7 @@
             ],
             "properties": {
                 "messageRetentionInDays": 1,
-                "partitionCount": 4
+                "partitionCount": "[parameters('eventHubPartitionCount')]"
             }
         },
         {

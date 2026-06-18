@@ -40,6 +40,11 @@ param retryInterval int = 2000
 @description('Optional. Maximum number of events to process in a single batch from Event Hub.')
 param eventHubBatchSize int = 10
 
+@description('Optional. Number of Event Hub partitions to provision. Sets the maximum parallelism for the consumer function (one Flex Consumption instance can read from each partition concurrently). Default 32 is the Standard tier ceiling and adds no cost. Lower values reduce parallelism only; partition count is fixed at hub creation and cannot be changed later.')
+@minValue(1)
+@maxValue(32)
+param eventHubPartitionCount int = 32
+
 @description('Optional. Enable debug logging for troubleshooting.')
 param debugEnabled bool = false
 
@@ -147,7 +152,7 @@ resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs
   name: resolvedEventHubName
   properties: {
     messageRetentionInDays: 1
-    partitionCount: 4
+    partitionCount: eventHubPartitionCount
   }
 }
 
