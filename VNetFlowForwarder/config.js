@@ -25,8 +25,8 @@ const config = {
   eventhubName: process.env.EVENTHUB_NAME || '',
   eventhubConsumerGroup: process.env.EVENTHUB_CONSUMER_GROUP || '$Default',
 
-  // Cursor cleanup
-  cursorCleanupEnabled: process.env.CURSOR_CLEANUP_ENABLED !== 'false',
+  // Cursor cleanup (always enabled)
+  cursorCleanupEnabled: true,
   cursorRetentionHours: parseInt(process.env.CURSOR_RETENTION_HOURS, 10) || 48,
   cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
 
