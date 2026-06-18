@@ -12,7 +12,7 @@ param location string = ''
 @allowed([
   'https://log-api.newrelic.com/log/v1'
   'https://log-api.eu.newrelic.com/log/v1'
-  'https://log-api.jp.newrelic.com/log/v1'
+  'https://log-api.jp.nr-data.net/log/v1'
 ])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
@@ -25,29 +25,8 @@ param maxRetries int = 3
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
 
-@description('Optional. Maximum number of events to process in a single batch from Event Hub.')
-param eventHubBatchSize int = 10
-
-@description('Optional. Number of Event Hub partitions to provision. Sets the maximum parallelism for the consumer function (one Flex Consumption instance can read from each partition concurrently). Default 32 is the Standard tier ceiling and adds no cost. Lower values reduce parallelism only; partition count is fixed at hub creation and cannot be changed later.')
-@minValue(1)
-@maxValue(32)
-param eventHubPartitionCount int = 32
-
 @description('Optional. Enable debug logging for troubleshooting.')
 param debugEnabled bool = false
-
-@description('Optional. Maximum number of instances for Flex Consumption plan.')
-@minValue(1)
-@maxValue(1000)
-param maximumInstanceCount int = 100
-
-@description('Optional. Memory allocation per instance in MB. Recommended: 2048MB.')
-@allowed([
-  512
-  2048
-  4096
-])
-param instanceMemoryMB int = 2048
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = (empty(location) ? resourceGroup().location : location)
@@ -61,7 +40,6 @@ var eventHubConsumerGroupName = 'nrvnetflowlogs-consumergroup'
 var eventHubAuthRuleName = 'nrvnetflowlogs-consumer-policy'
 var resolvedSystemTopicName = 'nrvnetflowlogs-eventgrid-topic-${uniqueResourceNameSuffix}'
 var resolvedSubscriptionName = 'nrvnetflowlogs-eventgrid-subscription-${uniqueResourceNameSuffix}'
-var cursorStorageAccountName = 'nrvnetflcur${uniqueResourceNameSuffix}'
 var cursorTableName = 'nrvnetflowlogscursors'
 var functionStorageAccountName = 'nrvnetflfn${uniqueResourceNameSuffix}'
 var servicePlanName = 'nrvnetflowlogs-serviceplan-${uniqueResourceNameSuffix}'
@@ -132,7 +110,7 @@ resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs
   name: resolvedEventHubName
   properties: {
     messageRetentionInDays: 1
-    partitionCount: eventHubPartitionCount
+    partitionCount: 32
   }
 }
 
@@ -162,52 +140,6 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
   }
 }
 
-resource cursorStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
-  name: cursorStorageAccountName
-  location: effectiveLocation
-  sku: {
-    name: 'Standard_LRS'
-  }
-  kind: 'StorageV2'
-  properties: {
-    minimumTlsVersion: 'TLS1_2'
-    allowBlobPublicAccess: false
-    allowSharedKeyAccess: true
-    publicNetworkAccess: 'Enabled'
-    networkAcls: {
-      bypass: 'AzureServices'
-      defaultAction: 'Allow'
-    }
-    supportsHttpsTrafficOnly: true
-    encryption: {
-      services: {
-        table: {
-          keyType: 'Account'
-          enabled: true
-        }
-        blob: {
-          keyType: 'Account'
-          enabled: true
-        }
-      }
-      keySource: 'Microsoft.Storage'
-    }
-    accessTier: 'Hot'
-  }
-}
-
-resource cursorStorageAccountName_default 'Microsoft.Storage/storageAccounts/tableServices@2022-09-01' = {
-  parent: cursorStorageAccount
-  name: 'default'
-  properties: {}
-}
-
-resource cursorStorageAccountName_default_cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2022-09-01' = {
-  parent: cursorStorageAccountName_default
-  name: cursorTableName
-  properties: {}
-}
-
 resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
   name: functionStorageAccountName
   location: effectiveLocation
@@ -235,6 +167,10 @@ resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' =
           keyType: 'Account'
           enabled: true
         }
+        table: {
+          keyType: 'Account'
+          enabled: true
+        }
       }
       keySource: 'Microsoft.Storage'
     }
@@ -254,6 +190,18 @@ resource functionStorageAccountName_default_deployments 'Microsoft.Storage/stora
   properties: {
     publicAccess: 'None'
   }
+}
+
+resource functionStorageTableServices 'Microsoft.Storage/storageAccounts/tableServices@2022-09-01' = {
+  parent: functionStorageAccount
+  name: 'default'
+  properties: {}
+}
+
+resource cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2022-09-01' = {
+  parent: functionStorageTableServices
+  name: cursorTableName
+  properties: {}
 }
 
 resource servicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -285,8 +233,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: maximumInstanceCount
-        instanceMemoryMB: instanceMemoryMB
+        maximumInstanceCount: 100
+        instanceMemoryMB: 2048
       }
       runtime: {
         name: 'node'
@@ -317,7 +265,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'CURSOR_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${cursorStorageAccountName};AccountKey=${cursorStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_RETENTION_HOURS'
@@ -352,10 +300,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: string(retryInterval)
         }
         {
-          name: 'AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize'
-          value: string(eventHubBatchSize)
-        }
-        {
           name: 'DEBUG_ENABLED'
           value: string(debugEnabled)
         }
@@ -371,7 +315,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     functionStorageAccount
     functionStorageAccountName_default_deployments
 
-    cursorStorageAccountName_default_cursorTable
+    cursorTable
   ]
 }
 
@@ -382,19 +326,6 @@ resource functionAppStorageBlobDataOwnerAssignment 'Microsoft.Authorization/role
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
-    )
-    principalId: functionApp.identity.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource functionAppCursorTableContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: cursorStorageAccount
-  name: guid(functionApp.id, cursorStorageAccount.id, 'StorageTableDataContributor')
-  properties: {
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
     )
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
@@ -428,7 +359,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   }
   properties: {
     azCliVersion: '2.61.0'
-    timeout: 'PT30M'
+    timeout: 'PT15M'
     retentionInterval: 'PT1H'
     cleanupPreference: 'OnSuccess'
     environmentVariables: [
@@ -449,7 +380,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         value: 'VNetFlowLogsRelay'
       }
     ]
-    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 900\n\necho "Waiting for $TARGET_FUNCTION to register on the function host..."\nfor i in $(seq 1 60); do\n  if az functionapp function show \\\n       --resource-group "$RESOURCE_GROUP" \\\n       --name "$FUNCTION_APP" \\\n       --function-name "$TARGET_FUNCTION" >/dev/null 2>&1; then\n    echo "$TARGET_FUNCTION registered."\n    exit 0\n  fi\n  echo \'Function not yet registered, sleeping 10s...\'\n  sleep 10\ndone\n\necho "Timed out waiting for $TARGET_FUNCTION to register after 10 minutes."\nexit 1\n'
+    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n\necho "Waiting for $TARGET_FUNCTION to register on the function host..."\nfor i in $(seq 1 30); do\n  if az functionapp function show \\\n       --resource-group "$RESOURCE_GROUP" \\\n       --name "$FUNCTION_APP" \\\n       --function-name "$TARGET_FUNCTION" >/dev/null 2>&1; then\n    echo "$TARGET_FUNCTION registered."\n    exit 0\n  fi\n  echo \'Function not yet registered, sleeping 10s...\'\n  sleep 10\ndone\n\necho "Timed out waiting for $TARGET_FUNCTION to register after 5 minutes."\nexit 1\n'
   }
   dependsOn: [
     functionApp
