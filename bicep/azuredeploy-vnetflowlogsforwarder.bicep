@@ -57,9 +57,9 @@ param maximumInstanceCount int = 100
 param instanceMemoryMB int = 2048
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
-var location_var = (empty(location) ? resourceGroup().location : location)
+var effectiveLocation = (empty(location) ? resourceGroup().location : location)
 var createNewSourceStorage = empty(sourceStorageAccountName)
-var sourceStorageAccountNameResolved_var = (createNewSourceStorage
+var resolvedSourceStorageName = (createNewSourceStorage
   ? 'nrvnetflsrc${uniqueResourceNameSuffix}'
   : sourceStorageAccountName)
 var createNewEventHubNamespace = empty(eventHubNamespace)
@@ -67,13 +67,13 @@ var createNewEventHub = (empty(eventHubNamespace) || empty(eventHubName))
 var eventHubNamespaceName = (createNewEventHubNamespace
   ? 'nrvnetflowlogs-eventhub-namespace-${uniqueResourceNameSuffix}'
   : eventHubNamespace)
-var eventHubName_var = (createNewEventHub ? 'nrvnetflowlogs-eventhub' : eventHubName)
+var resolvedEventHubName = (createNewEventHub ? 'nrvnetflowlogs-eventhub' : eventHubName)
 var eventHubConsumerGroupName = 'nrvnetflowlogs-consumergroup'
 var eventHubAuthRuleName = 'nrvnetflowlogs-consumer-policy'
-var eventGridSystemTopicName_var = (empty(eventGridSystemTopicName)
+var resolvedSystemTopicName = (empty(eventGridSystemTopicName)
   ? 'nrvnetflowlogs-eventgrid-topic-${uniqueResourceNameSuffix}'
   : eventGridSystemTopicName)
-var eventGridSubscriptionName_var = (empty(eventGridSubscriptionName)
+var resolvedSubscriptionName = (empty(eventGridSubscriptionName)
   ? 'nrvnetflowlogs-eventgrid-subscription-${uniqueResourceNameSuffix}'
   : eventGridSubscriptionName)
 var cursorStorageAccountName = 'nrvnetflcur${uniqueResourceNameSuffix}'
@@ -101,8 +101,8 @@ var flexConsumptionASP = {
 }
 
 resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2021-09-01' = if (createNewSourceStorage) {
-  name: sourceStorageAccountNameResolved_var
-  location: location_var
+  name: resolvedSourceStorageName
+  location: effectiveLocation
   sku: {
     name: 'Standard_LRS'
   }
@@ -131,22 +131,20 @@ resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@202
 
 resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' = if (createNewEventHubNamespace) {
   name: eventHubNamespaceName
-  location: location_var
+  location: effectiveLocation
   sku: {
     name: 'Standard'
     tier: 'Standard'
     capacity: 1
   }
   properties: {
-    minimumTlsVersion: '1.2'
     zoneRedundant: false
   }
 }
 
 resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs@2021-11-01' = if (createNewEventHub) {
   parent: eventHubNamespace_resource
-  name: '${eventHubName_var}'
-  location: location_var
+  name: resolvedEventHubName
   properties: {
     messageRetentionInDays: 1
     partitionCount: 4
@@ -161,7 +159,7 @@ resource eventHubNamespaceName_eventHubName_eventHubConsumerGroup 'Microsoft.Eve
 
 resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/AuthorizationRules@2021-11-01' = {
   parent: eventHubNamespace_resource
-  name: '${eventHubAuthRuleName}'
+  name: eventHubAuthRuleName
   properties: {
     rights: [
       'Listen'
@@ -171,8 +169,8 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
 }
 
 resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
-  name: eventGridSystemTopicName_var
-  location: location_var
+  name: resolvedSystemTopicName
+  location: effectiveLocation
   properties: {
     source: sourceStorageAccountId
     topicType: 'Microsoft.Storage.StorageAccounts'
@@ -181,7 +179,7 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
 
 resource cursorStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
   name: cursorStorageAccountName
-  location: location_var
+  location: effectiveLocation
   sku: {
     name: 'Standard_LRS'
   }
@@ -227,7 +225,7 @@ resource cursorStorageAccountName_default_cursorTable 'Microsoft.Storage/storage
 
 resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
   name: functionStorageAccountName
-  location: location_var
+  location: effectiveLocation
   sku: {
     name: 'Standard_LRS'
   }
@@ -275,7 +273,7 @@ resource functionStorageAccountName_default_deployments 'Microsoft.Storage/stora
 
 resource servicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   name: servicePlanName
-  location: location_var
+  location: effectiveLocation
   kind: flexConsumptionASP.kind
   properties: flexConsumptionASP.properties
   sku: flexConsumptionASP.sku
@@ -283,7 +281,7 @@ resource servicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
 
 resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   name: functionAppName
-  location: location_var
+  location: effectiveLocation
   kind: 'functionapp,linux'
   identity: {
     type: 'SystemAssigned'
@@ -295,7 +293,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       deployment: {
         storage: {
           type: 'blobContainer'
-          value: 'https://${functionStorageAccountName}.blob.core.windows.net/deployments'
+          value: 'https://${functionStorageAccountName}.blob.${environment().suffixes.storage}/deployments'
           authentication: {
             type: 'SystemAssignedIdentity'
           }
@@ -326,11 +324,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'EVENTHUB_NAME'
-          value: eventHubName_var
+          value: resolvedEventHubName
         }
         {
           name: 'EVENTHUB_CONSUMER_CONNECTION'
-          value: listKeys(eventHubNamespaceName_eventHubAuthRule.id, '2021-11-01').primaryConnectionString
+          value: eventHubNamespaceName_eventHubAuthRule.listKeys().primaryConnectionString
         }
         {
           name: 'EVENTHUB_CONSUMER_GROUP'
@@ -338,15 +336,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'SOURCE_STORAGE_ACCOUNT_NAME'
-          value: sourceStorageAccountNameResolved_var
+          value: resolvedSourceStorageName
         }
         {
           name: 'SOURCE_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${sourceStorageAccountNameResolved_var};AccountKey=${listKeys(sourceStorageAccountNameResolved.id,'2021-09-01').keys[0].value};EndpointSuffix=core.windows.net'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2021-09-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${cursorStorageAccountName};AccountKey=${listKeys(cursorStorageAccount.id,'2021-09-01').keys[0].value};EndpointSuffix=core.windows.net'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${cursorStorageAccountName};AccountKey=${cursorStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_TABLE_NAME'
@@ -396,7 +394,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   ]
 }
 
-resource Microsoft_Web_sites_functionAppName_Microsoft_Storage_storageAccounts_functionStorageAccountName_StorageBlobDataOwner 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource functionAppStorageBlobDataOwnerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: functionStorageAccount
   name: guid(functionApp.id, functionStorageAccount.id, 'StorageBlobDataOwner')
   properties: {
@@ -404,12 +402,12 @@ resource Microsoft_Web_sites_functionAppName_Microsoft_Storage_storageAccounts_f
       'Microsoft.Authorization/roleDefinitions',
       'b7e6dc6d-f1e8-4753-8033-0f276bb0955b'
     )
-    principalId: reference(functionApp.id, '2023-12-01', 'Full').identity.principalId
+    principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
-resource Microsoft_Web_sites_functionAppName_Microsoft_Storage_storageAccounts_cursorStorageAccountName_StorageTableDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource functionAppCursorTableContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: cursorStorageAccount
   name: guid(functionApp.id, cursorStorageAccount.id, 'StorageTableDataContributor')
   properties: {
@@ -417,29 +415,29 @@ resource Microsoft_Web_sites_functionAppName_Microsoft_Storage_storageAccounts_c
       'Microsoft.Authorization/roleDefinitions',
       '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
     )
-    principalId: reference(functionApp.id, '2023-12-01', 'Full').identity.principalId
+    principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: deploymentIdentityName
-  location: location_var
+  location: effectiveLocation
 }
 
-resource Microsoft_Web_sites_functionAppName_deploymentIdentityName_WebsiteContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource deploymentScriptWebsiteContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: functionApp
   name: guid(functionApp.id, deploymentIdentityName, 'WebsiteContributor')
   properties: {
     roleDefinitionId: websiteContributorRoleId
-    principalId: reference(deploymentIdentity.id, '2023-01-31', 'Full').properties.principalId
+    principalId: deploymentIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
 
 resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   name: deploymentScriptName
-  location: location_var
+  location: effectiveLocation
   kind: 'AzureCLI'
   identity: {
     type: 'UserAssigned'
@@ -474,18 +472,13 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   }
   dependsOn: [
     functionApp
-
-    extensionResourceId(
-      functionApp.id,
-      'Microsoft.Authorization/roleAssignments',
-      guid(functionApp.id, deploymentIdentityName, 'WebsiteContributor')
-    )
+    deploymentScriptWebsiteContributorAssignment
   ]
 }
 
 resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2021-12-01' = {
   parent: eventGridSystemTopic
-  name: '${eventGridSubscriptionName_var}'
+  name: resolvedSubscriptionName
   properties: {
     destination: {
       endpointType: 'AzureFunction'
