@@ -551,14 +551,12 @@ describe('Consumer', () => {
         containerName: 'test',
         blobName: 'blob.json',
       });
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
-        lastBlockId: '',
-        failureCount: 3,
-      });
+      const cursorData = { lastBlockId: '', failureCount: 3 };
 
       const result = await consumer.processEvent(
         { subject: '/blob.json' },
-        mockContext
+        mockContext,
+        cursorData
       );
 
       expect(result).toBeNull();
@@ -572,17 +570,15 @@ describe('Consumer', () => {
         containerName: 'test',
         blobName: 'blob.json',
       });
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
-        lastBlockId: '',
-        failureCount: 0,
-      });
+      const cursorData = { lastBlockId: '', failureCount: 0 };
       const error404 = new Error('Not found');
       error404.statusCode = 404;
       jest.spyOn(delta, 'downloadDelta').mockRejectedValue(error404);
 
       const result = await consumer.processEvent(
         { subject: '/blob.json' },
-        mockContext
+        mockContext,
+        cursorData
       );
 
       expect(result).toBeNull();
@@ -594,10 +590,7 @@ describe('Consumer', () => {
         containerName: 'test',
         blobName: 'blob.json',
       });
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
-        lastBlockId: 'block-1',
-        failureCount: 0,
-      });
+      const cursorData = { lastBlockId: 'block-1', failureCount: 0 };
       jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
         data: '{"records":[{"record":1}]}',
         lastBlockId: 'block-2',
@@ -610,7 +603,8 @@ describe('Consumer', () => {
 
       const result = await consumer.processEvent(
         { subject: '/blob.json' },
-        mockContext
+        mockContext,
+        cursorData
       );
 
       expect(result.records).toBe(1);

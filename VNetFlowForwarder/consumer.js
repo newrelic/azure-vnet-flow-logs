@@ -34,8 +34,13 @@ async function consumerHandler(messages, context) {
   let erroredEvents = 0;
 
   for (const message of msgArray) {
+    // Pre-fetch cursor to avoid redundant calls on error
+    let cursorData = null;
+    const blobPath = message?.subject || message?.data?.url || 'unknown';
+
     try {
-      const result = await processEvent(message, context);
+      cursorData = await cursor.getCursor(blobPath);
+      const result = await processEvent(message, context, cursorData);
       if (result) {
         totalRecords += result.records;
         totalBytes += result.bytes;
@@ -45,13 +50,14 @@ async function consumerHandler(messages, context) {
       }
     } catch (err) {
       erroredEvents++;
-      const blobPath = message?.subject || message?.data?.url || 'unknown';
       context.error(
         `Error processing event for blob "${blobPath}": ${err.message}`
       );
       // Increment failure counter for poison event protection
+      // Reuse already-fetched cursor data to avoid redundant Table Storage call
       try {
-        const { lastBlockId, failureCount } = await cursor.getCursor(blobPath);
+        const lastBlockId = cursorData?.lastBlockId || null;
+        const failureCount = cursorData?.failureCount || 0;
         await cursor.incrementFailure(blobPath, lastBlockId, failureCount);
       } catch (cursorErr) {
         context.warn(
@@ -72,9 +78,10 @@ async function consumerHandler(messages, context) {
  *
  * @param {Object} message - Event Hub message body (contains subject/blobPath)
  * @param {Object} context - Azure Function context
+ * @param {Object} cursorData - Pre-fetched cursor data {lastBlockId, failureCount}
  * @returns {Promise<{records: number, bytes: number} | null>} Processing stats or null if skipped
  */
-async function processEvent(message, context) {
+async function processEvent(message, context, cursorData) {
   // Event Grid sends events as an array — unwrap if needed
   const event = Array.isArray(message) ? message[0] : message;
   if (!event) {
@@ -95,9 +102,9 @@ async function processEvent(message, context) {
   // Step 1: Parse the blob path
   const { containerName, blobName } = delta.parseBlobPath(blobPath);
 
-  // Step 2: Read cursor and check for poison event
-  const { lastBlockId, failureCount } = await cursor.getCursor(blobPath);
-  if (failureCount >= 3) {
+  // Step 2: Use provided cursor data and check for poison event
+  const { lastBlockId, failureCount } = cursorData;
+  if (failureCount >= config.maxConsecutiveFailures) {
     context.error(
       `Consumer: blob "${blobPath}" has failed ${failureCount} consecutive times. Skipping (poison event).`
     );

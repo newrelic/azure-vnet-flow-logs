@@ -18,21 +18,20 @@ const config = {
   // Azure Storage
   sourceStorageConnection: process.env.SOURCE_STORAGE_CONNECTION || '',
   cursorStorageConnection: process.env.CURSOR_STORAGE_CONNECTION || '',
-  cursorTableName: process.env.CURSOR_TABLE_NAME || 'nrvnetflowlogscursors',
+  cursorTableName: 'nrvnetflowlogscursors',
 
   // Event Hub
   eventhubConnection: process.env.EVENTHUB_CONSUMER_CONNECTION || '',
   eventhubName: process.env.EVENTHUB_NAME || '',
   eventhubConsumerGroup: process.env.EVENTHUB_CONSUMER_GROUP || '$Default',
 
-  // Feature toggles
-  relayEnabled: process.env.VNETFLOWLOGS_RELAY_ENABLED === 'true',
-  consumerEnabled: process.env.VNETFLOWLOGS_FORWARDER_ENABLED === 'true',
-
   // Cursor cleanup
   cursorCleanupEnabled: process.env.CURSOR_CLEANUP_ENABLED !== 'false',
   cursorRetentionHours: parseInt(process.env.CURSOR_RETENTION_HOURS, 10) || 48,
   cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
+
+  // Poison event protection
+  maxConsecutiveFailures: parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 10) || 3,
 
   // Logging
   debugEnabled: process.env.DEBUG_ENABLED === 'true',
@@ -78,6 +77,14 @@ config.validate = function () {
     throw new Error(
       'Missing CURSOR_STORAGE_CONNECTION. Set the cursor storage account connection string.'
     );
+  }
+  if (!this.eventhubConnection) {
+    throw new Error(
+      'Missing EVENTHUB_CONSUMER_CONNECTION. Set the Event Hub connection string.'
+    );
+  }
+  if (!this.eventhubName) {
+    throw new Error('Missing EVENTHUB_NAME. Set the Event Hub name.');
   }
 };
 

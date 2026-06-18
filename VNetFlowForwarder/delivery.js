@@ -8,7 +8,6 @@
  */
 
 const https = require('https');
-const url = require('url');
 const zlib = require('zlib');
 const config = require('./config');
 
@@ -121,7 +120,7 @@ async function compressAndSend(logEntries, context) {
     return;
   }
 
-  await retryWithBackoff(
+  await retryWithFixedInterval(
     () => httpSend(compressed, context),
     config.nrMaxRetries,
     config.nrRetryInterval,
@@ -138,7 +137,7 @@ async function compressAndSend(logEntries, context) {
  */
 function httpSend(compressedData, context) {
   return new Promise((resolve, reject) => {
-    const urlObj = url.parse(config.nrEndpoint);
+    const urlObj = new URL(config.nrEndpoint);
     const options = {
       hostname: urlObj.hostname,
       port: 443,
@@ -157,7 +156,8 @@ function httpSend(compressedData, context) {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => {
-        body += chunk;
+        // Cap response body accumulation to prevent memory issues from adversarial endpoints
+        if (body.length < 4096) body += chunk;
       });
       res.on('end', () => {
         if (res.statusCode === 202) {
@@ -178,7 +178,7 @@ function httpSend(compressedData, context) {
 }
 
 /**
- * Retry a function with fixed interval.
+ * Retry a function with fixed interval between attempts.
  *
  * @param {Function} fn - Async function to retry
  * @param {number} maxRetries
@@ -186,7 +186,7 @@ function httpSend(compressedData, context) {
  * @param {Object} context
  * @returns {Promise<void>}
  */
-async function retryWithBackoff(fn, maxRetries, interval, context) {
+async function retryWithFixedInterval(fn, maxRetries, interval, context) {
   let lastError;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -217,5 +217,5 @@ module.exports = {
   parseTags,
   compress,
   httpSend,
-  retryWithBackoff,
+  retryWithFixedInterval,
 };

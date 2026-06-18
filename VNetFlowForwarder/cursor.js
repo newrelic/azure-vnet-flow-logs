@@ -112,7 +112,7 @@ async function incrementFailure(blobPath, lastBlockId, currentFailureCount) {
     {
       partitionKey,
       rowKey,
-      lastBlockId: lastBlockId || '',
+      lastBlockId: lastBlockId || null,
       failureCount: currentFailureCount + 1,
       updatedAt: new Date().toISOString(),
     },

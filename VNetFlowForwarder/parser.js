@@ -201,16 +201,19 @@ function extractMetadataFromPath(blobPath) {
   }
 
   // VNet flow log path format: flowLogResourceID=/{SUB}_{RG}/{NETWORKWATCHER_REGION_NAME}/...
+  // Guard against ReDoS by only processing reasonably-sized paths and bounding repetitions
   if (!metadata.subscriptionId || !metadata.resourceGroup) {
-    const vnetFlowMatch = blobPath.match(
-      /flowLogResourceID=\/([^_]+)_([^/]+)\/([^/]+)/i
-    );
-    if (vnetFlowMatch) {
-      if (!metadata.subscriptionId) {
-        metadata.subscriptionId = vnetFlowMatch[1].toLowerCase();
-      }
-      if (!metadata.resourceGroup) {
-        metadata.resourceGroup = vnetFlowMatch[2].toLowerCase();
+    if (blobPath.length < 2048) {
+      const vnetFlowMatch = blobPath.match(
+        /flowLogResourceID=\/([^_/]{1,64})_([^/]{1,128})\/([^/]{1,256})/i
+      );
+      if (vnetFlowMatch) {
+        if (!metadata.subscriptionId) {
+          metadata.subscriptionId = vnetFlowMatch[1].toLowerCase();
+        }
+        if (!metadata.resourceGroup) {
+          metadata.resourceGroup = vnetFlowMatch[2].toLowerCase();
+        }
       }
     }
   }
@@ -366,8 +369,6 @@ module.exports = {
   extractMetadataFromPath,
   parseFlowTuple,
   transformRecords,
-  // Exported for testing
-  parseLineByLine,
   PROTOCOL_MAP,
   DIRECTION_MAP,
   ACTION_MAP,
