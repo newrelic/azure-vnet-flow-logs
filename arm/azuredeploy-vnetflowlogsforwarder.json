@@ -165,7 +165,7 @@
     "resources": [
         {
             "type": "Microsoft.Storage/storageAccounts",
-            "apiVersion": "2021-09-01",
+            "apiVersion": "2023-05-01",
             "name": "[variables('sourceStorageAccountNameResolved')]",
             "condition": "[variables('createNewSourceStorage')]",
             "location": "[variables('location')]",
@@ -206,7 +206,6 @@
                 "capacity": 1
             },
             "properties": {
-                "minimumTlsVersion": "1.2",
                 "zoneRedundant": false
             }
         },
@@ -215,9 +214,8 @@
             "apiVersion": "2021-11-01",
             "name": "[concat(variables('eventHubNamespaceName'), '/', variables('eventHubName'))]",
             "condition": "[variables('createNewEventHub')]",
-            "location": "[variables('location')]",
             "dependsOn": [
-                "[resourceId('Microsoft.EventHub/namespaces/', variables('eventHubNamespaceName'))]"
+                "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
             ],
             "properties": {
                 "messageRetentionInDays": 1,
@@ -262,7 +260,7 @@
         },
         {
             "type": "Microsoft.Storage/storageAccounts",
-            "apiVersion": "2021-09-01",
+            "apiVersion": "2023-05-01",
             "name": "[variables('cursorStorageAccountName')]",
             "location": "[variables('location')]",
             "sku": {
@@ -315,7 +313,7 @@
         },
         {
             "type": "Microsoft.Storage/storageAccounts",
-            "apiVersion": "2021-09-01",
+            "apiVersion": "2023-05-01",
             "name": "[variables('functionStorageAccountName')]",
             "location": "[variables('location')]",
             "sku": {
@@ -401,7 +399,7 @@
                     "deployment": {
                         "storage": {
                             "type": "blobContainer",
-                            "value": "[concat('https://', variables('functionStorageAccountName'), '.blob.core.windows.net/deployments')]",
+                            "value": "[concat('https://', variables('functionStorageAccountName'), '.blob.', environment().suffixes.storage, '/deployments')]",
                             "authentication": {
                                 "type": "SystemAssignedIdentity"
                             }
@@ -448,11 +446,11 @@
                         },
                         {
                             "name": "SOURCE_STORAGE_CONNECTION",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('sourceStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved')), '2021-09-01').keys[0].value, ';EndpointSuffix=core.windows.net')]"
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('sourceStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
                         },
                         {
                             "name": "CURSOR_STORAGE_CONNECTION",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('cursorStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('cursorStorageAccountName')), '2021-09-01').keys[0].value, ';EndpointSuffix=core.windows.net')]"
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('cursorStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('cursorStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
                         },
                         {
                             "name": "CURSOR_TABLE_NAME",
