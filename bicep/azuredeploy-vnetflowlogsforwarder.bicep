@@ -300,14 +300,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: functionStorageAccountName
         }
         {
-          name: 'VNETFLOWLOGS_RELAY_ENABLED'
-          value: 'true'
-        }
-        {
-          name: 'VNETFLOWLOGS_FORWARDER_ENABLED'
-          value: 'true'
-        }
-        {
           name: 'EVENTHUB_NAME'
           value: resolvedEventHubName
         }
@@ -320,10 +312,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: eventHubConsumerGroupName
         }
         {
-          name: 'SOURCE_STORAGE_ACCOUNT_NAME'
-          value: resolvedSourceStorageName
-        }
-        {
           name: 'SOURCE_STORAGE_CONNECTION'
           value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2021-09-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
@@ -332,8 +320,16 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: 'DefaultEndpointsProtocol=https;AccountName=${cursorStorageAccountName};AccountKey=${cursorStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
-          name: 'CURSOR_TABLE_NAME'
-          value: cursorTableName
+          name: 'CURSOR_RETENTION_HOURS'
+          value: '48'
+        }
+        {
+          name: 'CURSOR_CLEANUP_SCHEDULE'
+          value: '0 0 3 * * *'
+        }
+        {
+          name: 'MAX_CONSECUTIVE_FAILURES'
+          value: '3'
         }
         {
           name: 'NR_LICENSE_KEY'
