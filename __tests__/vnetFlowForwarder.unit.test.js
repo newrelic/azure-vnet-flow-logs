@@ -232,33 +232,33 @@ describe('Parser', () => {
 
       expect(entries).toHaveLength(2);
       expect(entries[0].timestamp).toBe(1699990055000);
-      expect(entries[0].attributes['flow.srcAddr']).toBe('10.0.0.4');
-      expect(entries[0].attributes['flow.destAddr']).toBe('10.0.0.5');
-      expect(entries[0].attributes['flow.srcPort']).toBe(12345);
-      expect(entries[0].attributes['flow.destPort']).toBe(443);
-      expect(entries[0].attributes['flow.protocol']).toBe('TCP');
-      expect(entries[0].attributes['flow.direction']).toBe('Outbound');
-      expect(entries[0].attributes['flow.action']).toBe('Allowed');
-      expect(entries[0].attributes['flow.state']).toBe('Continuing');
-      expect(entries[0].attributes['flow.packetsSrcToDest']).toBe(10);
-      expect(entries[0].attributes['flow.bytesSrcToDest']).toBe(1500);
-      expect(entries[0].attributes['flow.packetsDestToSrc']).toBe(8);
-      expect(entries[0].attributes['flow.bytesDestToSrc']).toBe(1200);
-      expect(entries[0].attributes['azure.subscriptionId']).toBe('sub-1');
+      expect(entries[0].attributes.srcAddr).toBe('10.0.0.4');
+      expect(entries[0].attributes.destAddr).toBe('10.0.0.5');
+      expect(entries[0].attributes.srcPort).toBe(12345);
+      expect(entries[0].attributes.destPort).toBe(443);
+      expect(entries[0].attributes.protocol).toBe('TCP');
+      expect(entries[0].attributes.direction).toBe('Outbound');
+      expect(entries[0].attributes.action).toBe('Allowed');
+      expect(entries[0].attributes.state).toBe('Continuing');
+      expect(entries[0].attributes.packetsSrcToDest).toBe(10);
+      expect(entries[0].attributes.bytesSrcToDest).toBe(1500);
+      expect(entries[0].attributes.packetsDestToSrc).toBe(8);
+      expect(entries[0].attributes.bytesDestToSrc).toBe(1200);
+      expect(entries[0].attributes.subscriptionId).toBe('sub-1');
 
       expect(entries[1].timestamp).toBe(1699990060000);
-      expect(entries[1].attributes['flow.srcAddr']).toBe('10.0.0.4');
-      expect(entries[1].attributes['flow.destAddr']).toBe('10.0.0.6');
-      expect(entries[1].attributes['flow.srcPort']).toBe(12346);
-      expect(entries[1].attributes['flow.destPort']).toBe(80);
-      expect(entries[1].attributes['flow.protocol']).toBe('TCP');
-      expect(entries[1].attributes['flow.direction']).toBe('Outbound');
-      expect(entries[1].attributes['flow.action']).toBe('Allowed');
-      expect(entries[1].attributes['flow.state']).toBe('Begin');
-      expect(entries[1].attributes['flow.packetsSrcToDest']).toBe(1);
-      expect(entries[1].attributes['flow.bytesSrcToDest']).toBe(100);
-      expect(entries[1].attributes['flow.packetsDestToSrc']).toBe(0);
-      expect(entries[1].attributes['flow.bytesDestToSrc']).toBe(0);
+      expect(entries[1].attributes.srcAddr).toBe('10.0.0.4');
+      expect(entries[1].attributes.destAddr).toBe('10.0.0.6');
+      expect(entries[1].attributes.srcPort).toBe(12346);
+      expect(entries[1].attributes.destPort).toBe(80);
+      expect(entries[1].attributes.protocol).toBe('TCP');
+      expect(entries[1].attributes.direction).toBe('Outbound');
+      expect(entries[1].attributes.action).toBe('Allowed');
+      expect(entries[1].attributes.state).toBe('Begin');
+      expect(entries[1].attributes.packetsSrcToDest).toBe(1);
+      expect(entries[1].attributes.bytesSrcToDest).toBe(100);
+      expect(entries[1].attributes.packetsDestToSrc).toBe(0);
+      expect(entries[1].attributes.bytesDestToSrc).toBe(0);
     });
 
     it('should handle records with no flow tuples', () => {
