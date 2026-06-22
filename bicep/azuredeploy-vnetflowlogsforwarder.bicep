@@ -28,6 +28,9 @@ param retryInterval int = 2000
 @description('Optional. Enable debug logging for troubleshooting.')
 param debugEnabled bool = false
 
+@description('Optional. Disables public network access to the function storage account and the function app itself. Communication between resources runs through a Virtual Network with private endpoints. Note that the source storage account (containing VNet Flow Logs) keeps its existing network configuration. Extra resources created when enabled: a virtual network with three subnets, private DNS zones (blob, file, queue, table, azurewebsites), virtual network links, and private endpoints for the function storage and function app.')
+param disablePublicAccessToStorageAccount bool = false
+
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = (empty(location) ? resourceGroup().location : location)
 var createNewSourceStorage = empty(sourceStorageAccountName)
@@ -50,8 +53,33 @@ var websiteContributorRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'de139f84-1756-47ae-9be6-808fbbe84772'
 )
+var storageFileDataPrivilegedContributorRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '69566ab7-960f-475b-8e7c-b3118f30c6bd'
+)
+var eventHubsDataSenderRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '2b629674-e913-4c01-ae53-ef4638d8f975'
+)
 var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
 var sourceStorageAccountId = sourceStorageAccountNameResolved.id
+
+var virtualNetworkName = 'nrvnetflowlogs-vnet-${uniqueResourceNameSuffix}'
+var functionsSubnetName = 'functions-subnet'
+var privateEndpointsSubnetName = 'private-endpoints-subnet'
+var deploymentScriptsSubnetName = 'deployment-scripts-subnet'
+var blobPrivateDnsZoneName = 'privatelink.blob.${environment().suffixes.storage}'
+var filePrivateDnsZoneName = 'privatelink.file.${environment().suffixes.storage}'
+var queuePrivateDnsZoneName = 'privatelink.queue.${environment().suffixes.storage}'
+var tablePrivateDnsZoneName = 'privatelink.table.${environment().suffixes.storage}'
+var sitesPrivateDnsZoneName = 'privatelink.azurewebsites.net'
+var eventHubPrivateDnsZoneName = 'privatelink.servicebus.windows.net'
+var eventHubNamespacePrivateEndpointName = '${eventHubNamespaceName}-namespace-pe'
+var functionStorageBlobPrivateEndpointName = '${functionStorageAccountName}-blob-pe'
+var functionStorageFilePrivateEndpointName = '${functionStorageAccountName}-file-pe'
+var functionStorageQueuePrivateEndpointName = '${functionStorageAccountName}-queue-pe'
+var functionStorageTablePrivateEndpointName = '${functionStorageAccountName}-table-pe'
+var functionAppPrivateEndpointName = '${functionAppName}-sites-pe'
 var flexConsumptionASP = {
   kind: 'functionapp,linux'
   properties: {
@@ -63,7 +91,7 @@ var flexConsumptionASP = {
   }
 }
 
-resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2021-09-01' = if (createNewSourceStorage) {
+resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewSourceStorage) {
   name: resolvedSourceStorageName
   location: effectiveLocation
   sku: {
@@ -134,13 +162,16 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
 resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
   name: resolvedSystemTopicName
   location: effectiveLocation
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     source: sourceStorageAccountId
     topicType: 'Microsoft.Storage.StorageAccounts'
   }
 }
 
-resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' = {
+resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   name: functionStorageAccountName
   location: effectiveLocation
   sku: {
@@ -151,11 +182,14 @@ resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2021-09-01' =
     minimumTlsVersion: 'TLS1_2'
     allowBlobPublicAccess: false
     allowSharedKeyAccess: true
-    publicNetworkAccess: 'Enabled'
-    networkAcls: {
+    publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
+    networkAcls: (disablePublicAccessToStorageAccount ? {
+      bypass: 'AzureServices'
+      defaultAction: 'Deny'
+    } : {
       bypass: 'AzureServices'
       defaultAction: 'Allow'
-    }
+    })
     supportsHttpsTrafficOnly: true
     encryption: {
       services: {
@@ -222,6 +256,9 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   properties: {
     serverFarmId: servicePlan.id
     httpsOnly: true
+    publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
+    virtualNetworkSubnetId: (disablePublicAccessToStorageAccount ? functionsSubnet.id : null)
+    vnetRouteAllEnabled: disablePublicAccessToStorageAccount
     functionAppConfig: {
       deployment: {
         storage: {
@@ -261,7 +298,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'SOURCE_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2021-09-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_STORAGE_CONNECTION'
@@ -314,8 +351,11 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
   dependsOn: [
     functionStorageAccount
     functionStorageAccountName_default_deployments
-
     cursorTable
+    functionStorageBlobPrivateEndpointDnsGroup
+    functionStorageFilePrivateEndpointDnsGroup
+    functionStorageQueuePrivateEndpointDnsGroup
+    functionStorageTablePrivateEndpointDnsGroup
   ]
 }
 
@@ -347,6 +387,433 @@ resource deploymentScriptWebsiteContributorAssignment 'Microsoft.Authorization/r
   }
 }
 
+// Required when the deployment script runs in a subnet against a firewalled storage account:
+// the script's UAMI authenticates to the storage's file share via SMB.
+resource deploymentScriptStorageFileContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (disablePublicAccessToStorageAccount) {
+  scope: functionStorageAccount
+  name: guid(functionStorageAccount.id, deploymentIdentityName, 'StorageFileDataPrivilegedContributor')
+  properties: {
+    roleDefinitionId: storageFileDataPrivilegedContributorRoleId
+    principalId: deploymentIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Lets Event Grid deliver events to the Event Hub via deliveryWithResourceIdentity
+resource eventGridSystemTopicEventHubsDataSenderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: eventHubNamespace_resource
+  name: guid(eventHubNamespace_resource.id, resolvedSystemTopicName, 'EventHubsDataSender')
+  properties: {
+    roleDefinitionId: eventHubsDataSenderRoleId
+    principalId: eventGridSystemTopic.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// ===== Private networking (conditional on disablePublicAccessToStorageAccount) =====
+
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: virtualNetworkName
+  location: effectiveLocation
+  properties: {
+    addressSpace: {
+      addressPrefixes: [
+        '10.0.0.0/16'
+      ]
+    }
+    subnets: [
+      {
+        name: functionsSubnetName
+        properties: {
+          addressPrefix: '10.0.0.0/24'
+          delegations: [
+            {
+              name: 'delegation'
+              properties: {
+                serviceName: 'Microsoft.App/environments'
+              }
+            }
+          ]
+        }
+      }
+      {
+        name: privateEndpointsSubnetName
+        properties: {
+          addressPrefix: '10.0.1.0/24'
+          privateEndpointNetworkPolicies: 'Disabled'
+          privateLinkServiceNetworkPolicies: 'Disabled'
+        }
+      }
+      {
+        name: deploymentScriptsSubnetName
+        properties: {
+          addressPrefix: '10.0.2.0/28'
+          delegations: [
+            {
+              name: 'delegation'
+              properties: {
+                serviceName: 'Microsoft.ContainerInstance/containerGroups'
+              }
+            }
+          ]
+        }
+      }
+    ]
+  }
+}
+
+// Subnet symbolic refs (existing) so the function app + deployment script can reference IDs
+resource functionsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+  parent: virtualNetwork
+  name: functionsSubnetName
+}
+
+resource deploymentScriptsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+  parent: virtualNetwork
+  name: deploymentScriptsSubnetName
+}
+
+resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+  parent: virtualNetwork
+  name: privateEndpointsSubnetName
+}
+
+resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: blobPrivateDnsZoneName
+  location: 'global'
+}
+
+resource filePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: filePrivateDnsZoneName
+  location: 'global'
+}
+
+resource queuePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: queuePrivateDnsZoneName
+  location: 'global'
+}
+
+resource tablePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: tablePrivateDnsZoneName
+  location: 'global'
+}
+
+resource sitesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: sitesPrivateDnsZoneName
+  location: 'global'
+}
+
+resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: blobPrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource fileDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: filePrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: queuePrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: tablePrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: sitesPrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource functionStorageBlobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionStorageBlobPrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'blob'
+        properties: {
+          privateLinkServiceId: functionStorageAccount.id
+          groupIds: [ 'blob' ]
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageFilePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionStorageFilePrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'file'
+        properties: {
+          privateLinkServiceId: functionStorageAccount.id
+          groupIds: [ 'file' ]
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageQueuePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionStorageQueuePrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'queue'
+        properties: {
+          privateLinkServiceId: functionStorageAccount.id
+          groupIds: [ 'queue' ]
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionStorageTablePrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'table'
+        properties: {
+          privateLinkServiceId: functionStorageAccount.id
+          groupIds: [ 'table' ]
+        }
+      }
+    ]
+  }
+}
+
+resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionAppPrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'sites'
+        properties: {
+          privateLinkServiceId: functionApp.id
+          groupIds: [ 'sites' ]
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionStorageBlobPrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    blobDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'blob'
+        properties: {
+          privateDnsZoneId: blobPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageFilePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionStorageFilePrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    fileDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'file'
+        properties: {
+          privateDnsZoneId: filePrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageQueuePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionStorageQueuePrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    queueDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'queue'
+        properties: {
+          privateDnsZoneId: queuePrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionStorageTablePrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    tableDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'table'
+        properties: {
+          privateDnsZoneId: tablePrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionAppPrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    sitesDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'sites'
+        properties: {
+          privateDnsZoneId: sitesPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+// Explicit Allow rule set so Azure's PE-attach flow doesn't implicitly try to flip the namespace
+// to a Deny rule set (which then fails validation: Deny + zero IP/VNet rules is rejected).
+resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2021-11-01' = if (disablePublicAccessToStorageAccount) {
+  parent: eventHubNamespace_resource
+  name: 'default'
+  properties: {
+    publicNetworkAccess: 'Enabled'
+    defaultAction: 'Allow'
+    trustedServiceAccessEnabled: true
+  }
+}
+
+resource eventHubPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: eventHubPrivateDnsZoneName
+  location: 'global'
+}
+
+resource eventHubDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: eventHubPrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource eventHubNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: eventHubNamespacePrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'namespace'
+        properties: {
+          privateLinkServiceId: eventHubNamespace_resource.id
+          groupIds: [ 'namespace' ]
+        }
+      }
+    ]
+  }
+}
+
+resource eventHubNamespacePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: eventHubNamespacePrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    eventHubDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'namespace'
+        properties: {
+          privateDnsZoneId: eventHubPrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
 resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   name: deploymentScriptName
   location: effectiveLocation
@@ -362,6 +829,16 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     timeout: 'PT15M'
     retentionInterval: 'PT1H'
     cleanupPreference: 'OnSuccess'
+    containerSettings: (disablePublicAccessToStorageAccount ? {
+      subnetIds: [
+        {
+          id: deploymentScriptsSubnet.id
+        }
+      ]
+    } : null)
+    storageAccountSettings: (disablePublicAccessToStorageAccount ? {
+      storageAccountName: functionStorageAccountName
+    } : null)
     environmentVariables: [
       {
         name: 'ZIP_URL'
@@ -375,16 +852,18 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         name: 'RESOURCE_GROUP'
         value: resourceGroup().name
       }
-      {
-        name: 'TARGET_FUNCTION'
-        value: 'VNetFlowLogsRelay'
-      }
     ]
-    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n\necho "Waiting for $TARGET_FUNCTION to register on the function host..."\nfor i in $(seq 1 30); do\n  if az functionapp function show \\\n       --resource-group "$RESOURCE_GROUP" \\\n       --name "$FUNCTION_APP" \\\n       --function-name "$TARGET_FUNCTION" >/dev/null 2>&1; then\n    echo "$TARGET_FUNCTION registered."\n    exit 0\n  fi\n  echo \'Function not yet registered, sleeping 10s...\'\n  sleep 10\ndone\n\necho "Timed out waiting for $TARGET_FUNCTION to register after 5 minutes."\nexit 1\n'
+    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n'
   }
   dependsOn: [
     functionApp
     deploymentScriptWebsiteContributorAssignment
+    deploymentScriptStorageFileContributorAssignment
+    functionAppPrivateEndpointDnsGroup
+    functionStorageBlobPrivateEndpointDnsGroup
+    functionStorageFilePrivateEndpointDnsGroup
+    functionStorageQueuePrivateEndpointDnsGroup
+    functionStorageTablePrivateEndpointDnsGroup
   ]
 }
 
@@ -392,12 +871,15 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
   parent: eventGridSystemTopic
   name: resolvedSubscriptionName
   properties: {
-    destination: {
-      endpointType: 'AzureFunction'
-      properties: {
-        resourceId: resourceId('Microsoft.Web/sites/functions', functionAppName, 'VNetFlowLogsRelay')
-        maxEventsPerBatch: 1
-        preferredBatchSizeInKilobytes: 64
+    deliveryWithResourceIdentity: {
+      identity: {
+        type: 'SystemAssigned'
+      }
+      destination: {
+        endpointType: 'EventHub'
+        properties: {
+          resourceId: eventHubNamespaceName_eventHub.id
+        }
       }
     }
     filter: {
@@ -424,6 +906,6 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
     }
   }
   dependsOn: [
-    deploymentScript
+    eventGridSystemTopicEventHubsDataSenderAssignment
   ]
 }
