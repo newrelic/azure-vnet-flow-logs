@@ -4,14 +4,12 @@
  * VNet Flow Logs Forwarder — Function Registration
  *
  * Registers Azure Functions:
- *   1. VNetFlowRelay: Event Grid trigger -> Event Hub (with partition key)
- *   2. VNetFlowConsumer: Event Hub trigger -> cursor -> delta -> NR
- *   3. VNetFlowCleanup: Timer trigger -> cleanup stale cursors
+ *   1. VNetFlowConsumer: Event Hub trigger -> cursor -> delta -> NR
+ *   2. VNetFlowCleanup: Timer trigger -> cleanup stale cursors
  */
 
 const { app } = require('@azure/functions');
 const config = require('./config');
-const { relayHandler } = require('./relay');
 const { consumerHandler } = require('./consumer');
 const cursor = require('./cursor');
 
@@ -26,14 +24,6 @@ function ensureConfigValidated() {
     configValidated = true;
   }
 }
-
-// Register the Event Grid -> Event Hub relay function
-app.eventGrid('VNetFlowLogsRelay', {
-  handler: async (event, context) => {
-    ensureConfigValidated();
-    await relayHandler(event, context);
-  },
-});
 
 // Register the Event Hub consumer function
 app.eventHub('VNetFlowLogsConsumer', {
@@ -64,4 +54,4 @@ if (config.cursorCleanupEnabled) {
   });
 }
 
-module.exports = { relayHandler, consumerHandler };
+module.exports = { consumerHandler };

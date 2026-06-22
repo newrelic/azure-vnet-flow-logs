@@ -13,7 +13,6 @@ process.env.CURSOR_STORAGE_CONNECTION =
 process.env.EVENTHUB_CONSUMER_CONNECTION =
   'Endpoint=sb://test.servicebus.windows.net/;SharedAccessKeyName=test;SharedAccessKey=dGVzdA==';
 process.env.EVENTHUB_NAME = 'eh-vnetflow';
-process.env.VNETFLOWLOGS_RELAY_ENABLED = 'true';
 process.env.VNETFLOWLOGS_FORWARDER_ENABLED = 'true';
 
 // Mock Azure SDK modules before requiring application modules
@@ -613,45 +612,13 @@ describe('Consumer', () => {
   });
 });
 
-// ─── Relay Tests ───────────────────────────────────────────────────────────
-
-describe('Relay', () => {
-  const relay = require('../VNetFlowForwarder/relay');
-  const mockContext = {
-    log: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-  };
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    relay.resetClient();
-  });
-
-  describe('relayHandler', () => {
-    it('should skip events without subject', async () => {
-      const mockEvent = {
-        data: { someData: 'value' },
-      };
-
-      await relay.relayHandler(mockEvent, mockContext);
-
-      expect(mockContext.warn).toHaveBeenCalledWith(
-        expect.stringContaining('no subject')
-      );
-    });
-  });
-});
-
 // ─── Index Tests ───────────────────────────────────────────────────────────
 
 describe('Index - Function Registration', () => {
-  it('should export relay and consumer handlers', () => {
+  it('should export consumer handler', () => {
     const index = require('../VNetFlowForwarder/index');
 
-    expect(index.relayHandler).toBeDefined();
     expect(index.consumerHandler).toBeDefined();
-    expect(typeof index.relayHandler).toBe('function');
     expect(typeof index.consumerHandler).toBe('function');
   });
 });

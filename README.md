@@ -3,107 +3,154 @@
 # Azure VNet Flow Logs Forwarder
 ![GitHub release (latest SemVer including pre-releases)](https://img.shields.io/github/v/release/newrelic/azure-vnet-flow-logs?include_prereleases) [![Known Vulnerabilities](https://snyk.io/test/github/newrelic/azure-vnet-flow-logs/badge.svg?targetFile=package.json)](https://snyk.io/test/github/newrelic/azure-vnet-flow-logs?targetFile=package.json)
 
-This Azure Function collects and forwards Azure VNet Flow Logs from Azure Event Hubs to New Relic using efficient delta-only processing.
+This Azure Function collects and forwards Azure VNet Flow Logs to New Relic using efficient delta-only processing.
 
 ## Overview
 
-The VNet Flow Logs Forwarder consumes VNet flow log data from an Azure Event Hub and forwards it to New Relic Logs. It uses checkpoint management to track processed events and only processes new (delta) flow log data, making it efficient for high-volume environments.
+The VNet Flow Logs Forwarder is an event-driven Azure Function that:
+1. Listens to Event Grid notifications when new VNet flow log data is written to blob storage
+2. Downloads only the new (delta) blocks from the PT1H.json files
+3. Parses and enriches the flow log records
+4. Forwards them to New Relic Logs API
+
+This architecture ensures efficient processing of high-volume flow logs with minimal latency.
 
 ## Features
 
-- **Delta-only processing**: Processes only new flow log data since the last checkpoint
-- **Checkpoint management**: Tracks processing progress using Azure Table Storage
-- **Event Hub integration**: Consumes VNet flow logs from Azure Event Hub
-- **Batch delivery**: Efficiently delivers logs to New Relic in optimized batches
-- **Error handling**: Robust error handling and retry logic
+- **Delta-only processing**: Downloads and processes only new blob blocks since last checkpoint
+- **Cursor management**: Tracks processing progress using Azure Table Storage with automatic cleanup
+- **Event-driven**: Triggered by Event Grid via Event Hub for near real-time processing
+- **Batch delivery**: Compresses and delivers logs to New Relic in optimized batches
+- **Retry logic**: Configurable retry with fixed intervals for New Relic delivery
+- **Poison event protection**: Skips blobs that fail repeatedly to prevent infinite loops
+- **Private networking**: Optional VNet integration with private endpoints for enhanced security
 
 ## Prerequisites
 
-- Azure subscription with VNet Flow Logs enabled
-- Azure Event Hub for receiving VNet flow log data
-- Azure Storage Account for checkpoint management
-- Azure Functions hosting environment
+- Azure subscription with [VNet Flow Logs](https://learn.microsoft.com/en-us/azure/network-watcher/vnet-flow-logs-overview) enabled
+- Storage account where VNet flow logs are stored (PT1H.json files)
 - New Relic account with a valid License Key or Insert API Key
+
+## Quick Start - Deploy with ARM/Bicep
+
+The easiest way to deploy is using the provided ARM or Bicep templates, which create all required Azure resources automatically.
+
+### Option 1: Deploy with Bicep
+
+```bash
+az deployment group create \
+  --resource-group <your-resource-group> \
+  --template-file bicep/azuredeploy-vnetflowlogsforwarder.bicep \
+  --parameters newRelicLicenseKey='<your-nr-license-key>' \
+               sourceStorageAccountName='<existing-storage-with-flow-logs>'
+```
+
+### Option 2: Deploy with ARM Template
+
+```bash
+az deployment group create \
+  --resource-group <your-resource-group> \
+  --template-file arm/azuredeploy-vnetflowlogsforwarder.json \
+  --parameters newRelicLicenseKey='<your-nr-license-key>' \
+               sourceStorageAccountName='<existing-storage-with-flow-logs>'
+```
+
+### Template Parameters
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `newRelicLicenseKey` | Yes | New Relic License Key |
+| `sourceStorageAccountName` | No | Existing storage account with VNet flow logs. Leave blank to create a new one. |
+| `location` | No | Azure region (defaults to resource group location) |
+| `newRelicEndpoint` | No | NR Logs API endpoint: US (default), EU, or JP |
+| `newRelicTags` | No | Custom tags for logs (e.g., `env:prod;team:network`) |
+| `maxRetries` | No | Max retries for NR delivery (default: 3) |
+| `retryInterval` | No | Retry interval in ms (default: 2000) |
+| `debugEnabled` | No | Enable debug logging (default: false) |
+| `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
+
+### Resources Created
+
+The template deploys:
+- **Function App** (Flex Consumption plan, Node.js 22)
+- **Event Hub Namespace** with Event Hub and consumer group
+- **Event Grid System Topic** and subscription (filters for PT1H.json blob events)
+- **Storage Account** for function runtime and cursor table
+- **Managed Identity** with required role assignments
+- **(Optional)** VNet, private DNS zones, and private endpoints when `disablePublicAccessToStorageAccount=true`
 
 ## Configuration
 
-The function requires the following environment variables to be configured:
+### Environment Variables
 
-### Required Environment Variables
+The function uses the following environment variables (automatically configured by the ARM/Bicep templates):
+
+#### Required
 
 | Variable | Description |
 |----------|-------------|
-| `EVENTHUB_CONNECTION_STRING` | Connection string for the Event Hub receiving VNet flow logs |
+| `NR_LICENSE_KEY` | New Relic License Key (or use `NR_INSERT_KEY` for Insert API Key) |
+| `SOURCE_STORAGE_CONNECTION` | Connection string for storage account containing VNet flow logs |
+| `CURSOR_STORAGE_CONNECTION` | Connection string for storage account used for cursor tracking |
+| `EVENTHUB_CONSUMER_CONNECTION` | Event Hub connection string with Listen permission |
 | `EVENTHUB_NAME` | Name of the Event Hub |
-| `STORAGE_ACCOUNT_CONNECTION_STRING` | Connection string for Azure Storage (for checkpoints) |
-| `NEWRELIC_LICENSE_KEY` | New Relic License Key for sending logs |
-| `NEWRELIC_LOGS_ENDPOINT` | New Relic Logs endpoint (default: `https://log-api.newrelic.com/log/v1`) |
 
-### Optional Environment Variables
+#### Optional
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CONSUMER_GROUP` | Event Hub consumer group | `$Default` |
-| `LOG_LEVEL` | Logging level (DEBUG, INFO, WARN, ERROR) | `INFO` |
+| `NR_ENDPOINT` | New Relic Logs API endpoint | `https://log-api.newrelic.com/log/v1` |
+| `NR_TAGS` | Custom tags (semicolon-separated `key:value` pairs) | (empty) |
+| `NR_MAX_RETRIES` | Max retries for failed NR requests | `3` |
+| `NR_RETRY_INTERVAL` | Retry interval in milliseconds | `2000` |
+| `EVENTHUB_CONSUMER_GROUP` | Event Hub consumer group | `$Default` |
+| `DEBUG_ENABLED` | Enable verbose debug logging | `false` |
+| `CURSOR_RETENTION_HOURS` | Hours to retain cursor entries | `48` |
+| `CURSOR_CLEANUP_SCHEDULE` | Cron schedule for cursor cleanup | `0 0 3 * * *` (3 AM daily) |
+| `MAX_CONSECUTIVE_FAILURES` | Failures before marking blob as poison | `3` |
 
-## Installation
+### New Relic Endpoints
 
-1. Clone this repository:
-   ```bash
-   git clone https://github.com/newrelic/azure-vnet-flow-logs.git
-   cd azure-vnet-flow-logs
-   ```
+| Region | Endpoint |
+|--------|----------|
+| US | `https://log-api.newrelic.com/log/v1` |
+| EU | `https://log-api.eu.newrelic.com/log/v1` |
+| JP | `https://log-api.jp.nr-data.net/log/v1` |
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## Manual Deployment
 
-3. Configure local settings (for local development):
-   ```bash
-   cp local.settings.json.sample local.settings.json
-   # Edit local.settings.json with your configuration
-   ```
+For manual deployment without the ARM/Bicep templates:
 
-## Deployment
+### 1. Package the Function
 
-### Package the Function
-
-Create a deployment package:
 ```bash
+npm ci --omit=dev
 npm run package
 ```
 
-This creates `VNetFlowForwarder.zip` containing the function and all dependencies.
+This creates `VNetFlowForwarder.zip`.
 
-### Deploy to Azure
+### 2. Deploy to Azure
 
-You can deploy using:
+```bash
+az functionapp deployment source config-zip \
+  --resource-group <resource-group-name> \
+  --name <function-app-name> \
+  --src VNetFlowForwarder.zip
+```
 
-1. **Azure Portal**: Upload the zip file through the Azure Portal
-2. **Azure CLI**:
-   ```bash
-   az functionapp deployment source config-zip \
-     --resource-group <resource-group-name> \
-     --name <function-app-name> \
-     --src VNetFlowForwarder.zip
-   ```
-
-3. **VS Code**: Use the Azure Functions extension
-
-### Configure Environment Variables
-
-After deployment, configure the required environment variables in your Azure Function App settings:
+### 3. Configure Environment Variables
 
 ```bash
 az functionapp config appsettings set \
   --name <function-app-name> \
   --resource-group <resource-group-name> \
   --settings \
-    EVENTHUB_CONNECTION_STRING="<your-eventhub-connection-string>" \
-    EVENTHUB_NAME="<your-eventhub-name>" \
-    STORAGE_ACCOUNT_CONNECTION_STRING="<your-storage-connection-string>" \
-    NEWRELIC_LICENSE_KEY="<your-newrelic-license-key>"
+    NR_LICENSE_KEY="<your-nr-license-key>" \
+    SOURCE_STORAGE_CONNECTION="<source-storage-connection-string>" \
+    CURSOR_STORAGE_CONNECTION="<cursor-storage-connection-string>" \
+    EVENTHUB_CONSUMER_CONNECTION="<eventhub-connection-string>" \
+    EVENTHUB_NAME="<eventhub-name>"
 ```
 
 ## Testing
@@ -118,18 +165,65 @@ Run with coverage:
 npm test -- --coverage
 ```
 
+Lint code:
+```bash
+npm run lint
+```
+
 ## Architecture
 
-The VNet Flow Logs Forwarder consists of several modules:
+```
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  VNet Flow Logs │────▶│ Blob Storage │────▶│   Event Grid    │
+│   (PT1H.json)   │     │              │     │ (BlobCreated)   │
+└─────────────────┘     └──────────────┘     └────────┬────────┘
+                                                      │
+                                                      ▼
+┌─────────────────┐     ┌──────────────┐     ┌─────────────────┐
+│   New Relic     │◀────│   Function   │◀────│    Event Hub    │
+│   Logs API      │     │    App       │     │                 │
+└─────────────────┘     └──────────────┘     └─────────────────┘
+                               │
+                               ▼
+                        ┌──────────────┐
+                        │ Table Storage│
+                        │  (Cursors)   │
+                        └──────────────┘
+```
 
-- **index.js**: Azure Function entry point and timer trigger
-- **consumer.js**: Event Hub consumer for reading flow log events
-- **parser.js**: Parses Azure VNet flow log JSON format
-- **cursor.js**: Checkpoint management for tracking processing progress
-- **delta.js**: Delta processing logic to handle only new data
-- **delivery.js**: Delivers parsed logs to New Relic
-- **relay.js**: Coordinates event processing and relay
-- **config.js**: Configuration management
+### Modules
+
+| Module | Description |
+|--------|-------------|
+| `index.js` | Function registration (Event Hub trigger + Timer trigger for cleanup) |
+| `consumer.js` | Main processing logic: cursor → delta → parse → deliver → commit |
+| `parser.js` | Parses VNet flow log JSON and flow tuples into structured records |
+| `cursor.js` | Cursor management via Azure Table Storage with cleanup |
+| `delta.js` | Downloads only new blob blocks since last cursor position |
+| `delivery.js` | Batches, compresses (gzip), and delivers logs to New Relic |
+| `config.js` | Centralized configuration from environment variables |
+
+## Log Format
+
+Each flow log record sent to New Relic includes:
+
+| Field | Description |
+|-------|-------------|
+| `timestamp` | Flow event timestamp (Unix ms) |
+| `srcAddr` / `destAddr` | Source and destination IP addresses |
+| `srcPort` / `destPort` | Source and destination ports |
+| `protocol` | TCP, UDP, or ICMP |
+| `direction` | Inbound or Outbound |
+| `action` | Allowed or Denied |
+| `state` | Begin, Continuing, or End |
+| `packetsSrcToDest` / `packetsDestToSrc` | Packet counts |
+| `bytesSrcToDest` / `bytesDestToSrc` | Byte counts |
+| `subscriptionId` | Azure subscription ID |
+| `resourceGroup` | Resource group name |
+| `resourceType` | Resource type (e.g., virtualNetworks) |
+| `resourceName` | Resource name |
+| `rule` | NSG/ACL rule name |
+| `flowLogVersion` | Flow log version |
 
 ## Data Source
 

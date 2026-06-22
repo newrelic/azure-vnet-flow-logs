@@ -3,7 +3,7 @@
 /**
  * VNet Flow Logs Forwarder — Event Hub Consumer Function
  *
- * Triggered by Event Hub messages (originally relayed from Event Grid).
+ * Triggered by Event Hub messages (routed from Event Grid via partition key).
  * For each message (representing a BlobCreated event):
  *   1. Reads the cursor from Table Storage
  *   2. Downloads only new blocks from the blob (delta)
