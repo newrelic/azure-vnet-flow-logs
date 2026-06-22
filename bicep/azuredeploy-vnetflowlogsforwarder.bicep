@@ -349,7 +349,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
     }
   }
   dependsOn: [
-    functionStorageAccount
     functionStorageAccountName_default_deployments
     cursorTable
     functionStorageBlobPrivateEndpointDnsGroup
