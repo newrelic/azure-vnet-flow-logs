@@ -28,7 +28,20 @@ param retryInterval int = 2000
 @description('Optional. Enable debug logging for troubleshooting.')
 param debugEnabled bool = false
 
-@description('Optional. Disables public network access to the function storage account and the function app itself. Communication between resources runs through a Virtual Network with private endpoints. Note that the source storage account (containing VNet Flow Logs) keeps its existing network configuration. Extra resources created when enabled: a virtual network with three subnets, private DNS zones (blob, file, queue, table, azurewebsites), virtual network links, and private endpoints for the function storage and function app.')
+@description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
+@minValue(1)
+@maxValue(1000)
+param maximumInstanceCount int = 100
+
+@description('Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096.')
+@allowed([
+  512
+  2048
+  4096
+])
+param instanceMemoryMB int = 2048
+
+@description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
 param disablePublicAccessToStorageAccount bool = false
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
@@ -72,14 +85,17 @@ var blobPrivateDnsZoneName = 'privatelink.blob.${environment().suffixes.storage}
 var filePrivateDnsZoneName = 'privatelink.file.${environment().suffixes.storage}'
 var queuePrivateDnsZoneName = 'privatelink.queue.${environment().suffixes.storage}'
 var tablePrivateDnsZoneName = 'privatelink.table.${environment().suffixes.storage}'
-var sitesPrivateDnsZoneName = 'privatelink.azurewebsites.net'
-var eventHubPrivateDnsZoneName = 'privatelink.servicebus.windows.net'
+var serviceBusDnsSuffix = {
+  AzureCloud: 'servicebus.windows.net'
+  AzureUSGovernment: 'servicebus.usgovcloudapi.net'
+  AzureChinaCloud: 'servicebus.chinacloudapi.cn'
+}
+var eventHubPrivateDnsZoneName = 'privatelink.${serviceBusDnsSuffix[environment().name]}'
 var eventHubNamespacePrivateEndpointName = '${eventHubNamespaceName}-namespace-pe'
 var functionStorageBlobPrivateEndpointName = '${functionStorageAccountName}-blob-pe'
 var functionStorageFilePrivateEndpointName = '${functionStorageAccountName}-file-pe'
 var functionStorageQueuePrivateEndpointName = '${functionStorageAccountName}-queue-pe'
 var functionStorageTablePrivateEndpointName = '${functionStorageAccountName}-table-pe'
-var functionAppPrivateEndpointName = '${functionAppName}-sites-pe'
 var flexConsumptionASP = {
   kind: 'functionapp,linux'
   properties: {
@@ -154,7 +170,6 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
   properties: {
     rights: [
       'Listen'
-      'Send'
     ]
   }
 }
@@ -270,8 +285,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: 100
-        instanceMemoryMB: 2048
+        maximumInstanceCount: maximumInstanceCount
+        instanceMemoryMB: instanceMemoryMB
       }
       runtime: {
         name: 'node'
@@ -497,11 +512,6 @@ resource tablePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if
   location: 'global'
 }
 
-resource sitesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
-  name: sitesPrivateDnsZoneName
-  location: 'global'
-}
-
 resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: blobPrivateDnsZone
   name: 'link'
@@ -540,18 +550,6 @@ resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
 
 resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: tablePrivateDnsZone
-  name: 'link'
-  location: 'global'
-  properties: {
-    registrationEnabled: false
-    virtualNetwork: {
-      id: virtualNetwork.id
-    }
-  }
-}
-
-resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
-  parent: sitesPrivateDnsZone
   name: 'link'
   location: 'global'
   properties: {
@@ -638,25 +636,6 @@ resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints
   }
 }
 
-resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
-  name: functionAppPrivateEndpointName
-  location: effectiveLocation
-  properties: {
-    subnet: {
-      id: privateEndpointsSubnet.id
-    }
-    privateLinkServiceConnections: [
-      {
-        name: 'sites'
-        properties: {
-          privateLinkServiceId: functionApp.id
-          groupIds: [ 'sites' ]
-        }
-      }
-    ]
-  }
-}
-
 resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageBlobPrivateEndpoint
   name: 'default'
@@ -723,24 +702,6 @@ resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateE
         name: 'table'
         properties: {
           privateDnsZoneId: tablePrivateDnsZone.id
-        }
-      }
-    ]
-  }
-}
-
-resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
-  parent: functionAppPrivateEndpoint
-  name: 'default'
-  dependsOn: [
-    sitesDnsZoneVnetLink
-  ]
-  properties: {
-    privateDnsZoneConfigs: [
-      {
-        name: 'sites'
-        properties: {
-          privateDnsZoneId: sitesPrivateDnsZone.id
         }
       }
     ]
@@ -858,7 +819,6 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     functionApp
     deploymentScriptWebsiteContributorAssignment
     deploymentScriptStorageFileContributorAssignment
-    functionAppPrivateEndpointDnsGroup
     functionStorageBlobPrivateEndpointDnsGroup
     functionStorageFilePrivateEndpointDnsGroup
     functionStorageQueuePrivateEndpointDnsGroup

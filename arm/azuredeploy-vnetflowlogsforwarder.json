@@ -62,11 +62,28 @@
                 "description": "Optional. Enable debug logging for troubleshooting."
             }
         },
+        "maximumInstanceCount": {
+            "type": "int",
+            "defaultValue": 100,
+            "minValue": 1,
+            "maxValue": 1000,
+            "metadata": {
+                "description": "Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000."
+            }
+        },
+        "instanceMemoryMB": {
+            "type": "int",
+            "defaultValue": 2048,
+            "allowedValues": [ 512, 2048, 4096 ],
+            "metadata": {
+                "description": "Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096."
+            }
+        },
         "disablePublicAccessToStorageAccount": {
             "type": "bool",
             "defaultValue": false,
             "metadata": {
-                "description": "Optional. Disables public network access to the function storage account and the function app itself. Communication between resources runs through a Virtual Network with private endpoints. Note that the source storage account (containing VNet Flow Logs) keeps its existing network configuration. Extra resources created when enabled: a virtual network with three subnets, private DNS zones (blob, file, queue, table, azurewebsites), virtual network links, and private endpoints for the function storage and function app."
+                "description": "Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled."
             }
         }
     },
@@ -109,14 +126,17 @@
         "filePrivateDnsZoneName": "[concat('privatelink.file.', environment().suffixes.storage)]",
         "queuePrivateDnsZoneName": "[concat('privatelink.queue.', environment().suffixes.storage)]",
         "tablePrivateDnsZoneName": "[concat('privatelink.table.', environment().suffixes.storage)]",
-        "sitesPrivateDnsZoneName": "privatelink.azurewebsites.net",
-        "eventHubPrivateDnsZoneName": "privatelink.servicebus.windows.net",
+        "serviceBusDnsSuffix": {
+            "AzureCloud": "servicebus.windows.net",
+            "AzureUSGovernment": "servicebus.usgovcloudapi.net",
+            "AzureChinaCloud": "servicebus.chinacloudapi.cn"
+        },
+        "eventHubPrivateDnsZoneName": "[concat('privatelink.', variables('serviceBusDnsSuffix')[environment().name])]",
         "eventHubNamespacePrivateEndpointName": "[concat(variables('eventHubNamespaceName'), '-namespace-pe')]",
         "functionStorageBlobPrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-blob-pe')]",
         "functionStorageFilePrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-file-pe')]",
         "functionStorageQueuePrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-queue-pe')]",
         "functionStorageTablePrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-table-pe')]",
-        "functionAppPrivateEndpointName": "[concat(variables('functionAppName'), '-sites-pe')]",
 
         "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
 
@@ -207,8 +227,7 @@
             ],
             "properties": {
                 "rights": [
-                    "Listen",
-                    "Send"
+                    "Listen"
                 ]
             }
         },
@@ -347,8 +366,8 @@
                         }
                     },
                     "scaleAndConcurrency": {
-                        "maximumInstanceCount": 100,
-                        "instanceMemoryMB": 2048
+                        "maximumInstanceCount": "[parameters('maximumInstanceCount')]",
+                        "instanceMemoryMB": "[parameters('instanceMemoryMB')]"
                     },
                     "runtime": {
                         "name": "node",
@@ -579,14 +598,6 @@
         },
         {
             "condition": "[parameters('disablePublicAccessToStorageAccount')]",
-            "type": "Microsoft.Network/privateDnsZones",
-            "apiVersion": "2020-06-01",
-            "name": "[variables('sitesPrivateDnsZoneName')]",
-            "location": "global",
-            "properties": {}
-        },
-        {
-            "condition": "[parameters('disablePublicAccessToStorageAccount')]",
             "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
             "apiVersion": "2020-06-01",
             "name": "[concat(variables('blobPrivateDnsZoneName'), '/link')]",
@@ -644,23 +655,6 @@
             "location": "global",
             "dependsOn": [
                 "[resourceId('Microsoft.Network/privateDnsZones', variables('tablePrivateDnsZoneName'))]",
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]"
-            ],
-            "properties": {
-                "registrationEnabled": false,
-                "virtualNetwork": {
-                    "id": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]"
-                }
-            }
-        },
-        {
-            "condition": "[parameters('disablePublicAccessToStorageAccount')]",
-            "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
-            "apiVersion": "2020-06-01",
-            "name": "[concat(variables('sitesPrivateDnsZoneName'), '/link')]",
-            "location": "global",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/privateDnsZones', variables('sitesPrivateDnsZoneName'))]",
                 "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]"
             ],
             "properties": {
@@ -772,31 +766,6 @@
         },
         {
             "condition": "[parameters('disablePublicAccessToStorageAccount')]",
-            "type": "Microsoft.Network/privateEndpoints",
-            "apiVersion": "2023-09-01",
-            "name": "[variables('functionAppPrivateEndpointName')]",
-            "location": "[variables('location')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
-                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
-            ],
-            "properties": {
-                "subnet": {
-                    "id": "[variables('privateEndpointsSubnetId')]"
-                },
-                "privateLinkServiceConnections": [
-                    {
-                        "name": "sites",
-                        "properties": {
-                            "privateLinkServiceId": "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-                            "groupIds": [ "sites" ]
-                        }
-                    }
-                ]
-            }
-        },
-        {
-            "condition": "[parameters('disablePublicAccessToStorageAccount')]",
             "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
             "apiVersion": "2023-09-01",
             "name": "[concat(variables('functionStorageBlobPrivateEndpointName'), '/default')]",
@@ -870,26 +839,6 @@
                         "name": "table",
                         "properties": {
                             "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('tablePrivateDnsZoneName'))]"
-                        }
-                    }
-                ]
-            }
-        },
-        {
-            "condition": "[parameters('disablePublicAccessToStorageAccount')]",
-            "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
-            "apiVersion": "2023-09-01",
-            "name": "[concat(variables('functionAppPrivateEndpointName'), '/default')]",
-            "dependsOn": [
-                "[resourceId('Microsoft.Network/privateEndpoints', variables('functionAppPrivateEndpointName'))]",
-                "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('sitesPrivateDnsZoneName'), 'link')]"
-            ],
-            "properties": {
-                "privateDnsZoneConfigs": [
-                    {
-                        "name": "sites",
-                        "properties": {
-                            "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('sitesPrivateDnsZoneName'))]"
                         }
                     }
                 ]
@@ -996,7 +945,6 @@
                 "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('deploymentIdentityName'))]",
                 "[extensionResourceId(resourceId('Microsoft.Web/sites', variables('functionAppName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Web/sites', variables('functionAppName')), variables('deploymentIdentityName'), 'WebsiteContributor'))]",
                 "[extensionResourceId(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), variables('deploymentIdentityName'), 'StorageFileDataPrivilegedContributor'))]",
-                "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('functionAppPrivateEndpointName'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('functionStorageBlobPrivateEndpointName'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('functionStorageFilePrivateEndpointName'), 'default')]",
                 "[resourceId('Microsoft.Network/privateEndpoints/privateDnsZoneGroups', variables('functionStorageQueuePrivateEndpointName'), 'default')]",
