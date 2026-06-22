@@ -91,11 +91,18 @@ var serviceBusDnsSuffix = {
   AzureChinaCloud: 'servicebus.chinacloudapi.cn'
 }
 var eventHubPrivateDnsZoneName = 'privatelink.${serviceBusDnsSuffix[environment().name]}'
+var appServiceDnsZone = {
+  AzureCloud: 'privatelink.azurewebsites.net'
+  AzureUSGovernment: 'privatelink.azurewebsites.us'
+  AzureChinaCloud: 'privatelink.chinacloudsites.cn'
+}
+var sitesPrivateDnsZoneName = appServiceDnsZone[environment().name]
 var eventHubNamespacePrivateEndpointName = '${eventHubNamespaceName}-namespace-pe'
 var functionStorageBlobPrivateEndpointName = '${functionStorageAccountName}-blob-pe'
 var functionStorageFilePrivateEndpointName = '${functionStorageAccountName}-file-pe'
 var functionStorageQueuePrivateEndpointName = '${functionStorageAccountName}-queue-pe'
 var functionStorageTablePrivateEndpointName = '${functionStorageAccountName}-table-pe'
+var functionAppPrivateEndpointName = '${functionAppName}-sites-pe'
 var flexConsumptionASP = {
   kind: 'functionapp,linux'
   properties: {
@@ -512,6 +519,11 @@ resource tablePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if
   location: 'global'
 }
 
+resource sitesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  name: sitesPrivateDnsZoneName
+  location: 'global'
+}
+
 resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: blobPrivateDnsZone
   name: 'link'
@@ -550,6 +562,18 @@ resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
 
 resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: tablePrivateDnsZone
+  name: 'link'
+  location: 'global'
+  properties: {
+    registrationEnabled: false
+    virtualNetwork: {
+      id: virtualNetwork.id
+    }
+  }
+}
+
+resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+  parent: sitesPrivateDnsZone
   name: 'link'
   location: 'global'
   properties: {
@@ -636,6 +660,25 @@ resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints
   }
 }
 
+resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  name: functionAppPrivateEndpointName
+  location: effectiveLocation
+  properties: {
+    subnet: {
+      id: privateEndpointsSubnet.id
+    }
+    privateLinkServiceConnections: [
+      {
+        name: 'sites'
+        properties: {
+          privateLinkServiceId: functionApp.id
+          groupIds: [ 'sites' ]
+        }
+      }
+    ]
+  }
+}
+
 resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageBlobPrivateEndpoint
   name: 'default'
@@ -702,6 +745,24 @@ resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateE
         name: 'table'
         properties: {
           privateDnsZoneId: tablePrivateDnsZone.id
+        }
+      }
+    ]
+  }
+}
+
+resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+  parent: functionAppPrivateEndpoint
+  name: 'default'
+  dependsOn: [
+    sitesDnsZoneVnetLink
+  ]
+  properties: {
+    privateDnsZoneConfigs: [
+      {
+        name: 'sites'
+        properties: {
+          privateDnsZoneId: sitesPrivateDnsZone.id
         }
       }
     ]
@@ -819,6 +880,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     functionApp
     deploymentScriptWebsiteContributorAssignment
     deploymentScriptStorageFileContributorAssignment
+    functionAppPrivateEndpointDnsGroup
     functionStorageBlobPrivateEndpointDnsGroup
     functionStorageFilePrivateEndpointDnsGroup
     functionStorageQueuePrivateEndpointDnsGroup
