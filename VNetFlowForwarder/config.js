@@ -6,14 +6,16 @@
  * Centralized environment variable access and defaults.
  */
 
+const _parseInt = (val, def) => { const n = parseInt(val, 10); return Number.isNaN(n) ? def : n; };
+
 const config = {
   // New Relic
   nrLicenseKey: process.env.NR_LICENSE_KEY || '',
   nrInsertKey: process.env.NR_INSERT_KEY || '',
   nrEndpoint: process.env.NR_ENDPOINT || 'https://log-api.newrelic.com/log/v1',
   nrTags: process.env.NR_TAGS || '',
-  nrMaxRetries: parseInt(process.env.NR_MAX_RETRIES, 10) || 3,
-  nrRetryInterval: parseInt(process.env.NR_RETRY_INTERVAL, 10) || 2000,
+  nrMaxRetries: _parseInt(process.env.NR_MAX_RETRIES, 3),
+  nrRetryInterval: _parseInt(process.env.NR_RETRY_INTERVAL, 2000),
 
   // Azure Storage
   sourceStorageConnection: process.env.SOURCE_STORAGE_CONNECTION || '',
@@ -27,11 +29,11 @@ const config = {
 
   // Cursor cleanup (always enabled)
   cursorCleanupEnabled: true,
-  cursorRetentionHours: parseInt(process.env.CURSOR_RETENTION_HOURS, 10) || 48,
+  cursorRetentionHours: _parseInt(process.env.CURSOR_RETENTION_HOURS, 48),
   cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
 
   // Poison event protection
-  maxConsecutiveFailures: parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 10) || 3,
+  maxConsecutiveFailures: _parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 3),
 
   // Logging
   debugEnabled: process.env.DEBUG_ENABLED === 'true',
@@ -85,6 +87,11 @@ config.validate = function () {
   }
   if (!this.eventhubName) {
     throw new Error('Missing EVENTHUB_NAME. Set the Event Hub name.');
+  }
+  try {
+    new URL(this.nrEndpoint);
+  } catch {
+    throw new Error(`NR_ENDPOINT is not a valid URL: ${this.nrEndpoint}`);
   }
 };
 

@@ -8,6 +8,7 @@
  * PT1H.json blob, enabling delta-only reads with precise tracking.
  */
 
+const crypto = require('crypto');
 const { TableClient } = require('@azure/data-tables');
 const config = require('./config');
 
@@ -39,10 +40,15 @@ function encodeKeys(blobPath) {
     (ch) => `|${ch.charCodeAt(0).toString(16)}|`
   );
 
-  // Use a fixed partition to keep queries simple; rowKey is the encoded path
+  // Azure Table Storage row key limit is 1024 bytes — hash if over threshold
+  const rowKey =
+    encoded.length > 900
+      ? 'h-' + crypto.createHash('sha256').update(blobPath).digest('hex')
+      : encoded;
+
   return {
     partitionKey: 'vnetflowlogs',
-    rowKey: encoded,
+    rowKey,
   };
 }
 

@@ -19,6 +19,23 @@ const parser = require('./parser');
 const delivery = require('./delivery');
 
 /**
+ * Normalize a blob path from an Event Hub/Event Grid message.
+ * Handles both subject format and full data.url (HTTPS) format.
+ */
+function normalizeBlobPath(event) {
+  if (event?.subject) return event.subject;
+  if (event?.data?.url) {
+    try {
+      const u = new URL(event.data.url);
+      return u.pathname.slice(1); // /container/blob -> container/blob
+    } catch {
+      return '';
+    }
+  }
+  return '';
+}
+
+/**
  * Consumer handler: processes a batch of Event Hub messages.
  * Each message contains a blob path that needs delta processing.
  *
@@ -36,11 +53,13 @@ async function consumerHandler(messages, context) {
   for (const message of msgArray) {
     // Pre-fetch cursor to avoid redundant calls on error
     let cursorData = null;
-    const blobPath = message?.subject || message?.data?.url || 'unknown';
+    // Unwrap array-wrapped Event Grid events before normalizing the path
+    const rawMsg = Array.isArray(message) ? message[0] : message;
+    const blobPath = normalizeBlobPath(rawMsg) || 'unknown';
 
     try {
       cursorData = await cursor.getCursor(blobPath);
-      const result = await processEvent(message, context, cursorData);
+      const result = await processEvent(rawMsg, context, cursorData);
       if (result) {
         totalRecords += result.records;
         totalBytes += result.bytes;
@@ -81,15 +100,13 @@ async function consumerHandler(messages, context) {
  * @param {Object} cursorData - Pre-fetched cursor data {lastBlockId, failureCount}
  * @returns {Promise<{records: number, bytes: number} | null>} Processing stats or null if skipped
  */
-async function processEvent(message, context, cursorData) {
-  // Event Grid sends events as an array — unwrap if needed
-  const event = Array.isArray(message) ? message[0] : message;
+async function processEvent(event, context, cursorData) {
   if (!event) {
     context.warn('Consumer: empty message. Skipping.');
     return null;
   }
 
-  const blobPath = event.subject || event.data?.url || '';
+  const blobPath = normalizeBlobPath(event);
   if (!blobPath) {
     context.warn('Consumer: message has no blob path. Skipping.');
     return null;
@@ -144,7 +161,13 @@ async function processEvent(message, context, cursorData) {
   if (records.length === 0) {
     context.warn(`Consumer: parsed 0 records from delta of ${blobPath}`);
     // Still advance cursor to avoid re-processing empty deltas
-    await cursor.setCursor(blobPath, newLastBlockId);
+    try {
+      await cursor.setCursor(blobPath, newLastBlockId);
+    } catch (cursorErr) {
+      context.error(
+        `Consumer: cursor commit failed for empty delta ${blobPath}: ${cursorErr.message}`
+      );
+    }
     return { records: 0, bytes: data.length };
   }
 
@@ -162,7 +185,13 @@ async function processEvent(message, context, cursorData) {
   await delivery.sendToNewRelic(logEntries, context);
 
   // Step 7: Commit cursor (only after successful delivery)
-  await cursor.setCursor(blobPath, newLastBlockId);
+  try {
+    await cursor.setCursor(blobPath, newLastBlockId);
+  } catch (cursorErr) {
+    context.error(
+      `Consumer: cursor commit failed for ${blobPath}: ${cursorErr.message}. Records sent but cursor not advanced — possible duplicate delivery on retry.`
+    );
+  }
 
   if (config.debugEnabled) {
     context.log(

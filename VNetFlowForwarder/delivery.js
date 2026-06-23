@@ -11,11 +11,6 @@ const https = require('https');
 const zlib = require('zlib');
 const config = require('./config');
 
-const INSTRUMENTATION_PROVIDER = 'azure';
-const INSTRUMENTATION_NAME = 'vnet-function';
-const PLUGIN_TYPE = 'azure';
-const FORWARDER_NAME = 'VNetFlowLogsForwarder';
-
 // Reuse TCP connections across requests within the same function invocation
 const httpsAgent = new https.Agent({ keepAlive: true });
 
@@ -32,15 +27,12 @@ function buildPayload(logEntries, context) {
     {
       common: {
         attributes: {
-          'instrumentation.provider': INSTRUMENTATION_PROVIDER,
-          'instrumentation.name': INSTRUMENTATION_NAME,
-          'instrumentation.version': config.version,
           plugin: {
-            type: PLUGIN_TYPE,
-            version: config.version,
+            type: 'azure',
+            version: config.versionvnet,
           },
           azure: {
-            forwardername: FORWARDER_NAME,
+            forwardername: 'VNetFlowLogsForwarder',
             invocationid: context.invocationId || '',
           },
           tags,

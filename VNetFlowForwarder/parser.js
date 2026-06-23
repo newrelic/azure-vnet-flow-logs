@@ -244,8 +244,9 @@ function extractMetadataFromPath(blobPath) {
  */
 function parseFlowTuple(tuple) {
   const fields = tuple.split(',');
+  const ts = parseInt(fields[0], 10);
   const record = {
-    timestamp: parseInt(fields[0], 10) * 1000, // Convert to epoch ms
+    timestamp: Number.isNaN(ts) ? Date.now() : ts * 1000, // Convert to epoch ms
     srcAddr: fields[1] || '',
     destAddr: fields[2] || '',
     srcPort: parseInt(fields[3], 10) || 0,
