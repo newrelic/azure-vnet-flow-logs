@@ -900,6 +900,15 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
         endpointType: 'EventHub'
         properties: {
           resourceId: eventHubNamespaceName_eventHub.id
+          deliveryAttributeMappings: [
+            {
+              name: 'PartitionKey'
+              type: 'Dynamic'
+              properties: {
+                sourceField: 'subject'
+              }
+            }
+          ]
         }
       }
     }

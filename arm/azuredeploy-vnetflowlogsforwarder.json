@@ -1069,7 +1069,16 @@
                     "destination": {
                         "endpointType": "EventHub",
                         "properties": {
-                            "resourceId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]"
+                            "resourceId": "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]",
+                            "deliveryAttributeMappings": [
+                                {
+                                    "name": "PartitionKey",
+                                    "type": "Dynamic",
+                                    "properties": {
+                                        "sourceField": "subject"
+                                    }
+                                }
+                            ]
                         }
                     }
                 },
