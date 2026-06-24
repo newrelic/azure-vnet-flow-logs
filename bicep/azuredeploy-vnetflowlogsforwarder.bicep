@@ -418,7 +418,7 @@ resource functionAppStorageQueueDataContributorAssignment 'Microsoft.Authorizati
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
-      '974c5e8b-45b9-4d35-b0c5-9e1e7c6a3a1f'
+      '974c5e8b-45b9-4653-ba55-5f855dd0fb88'
     )
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
@@ -431,7 +431,7 @@ resource functionAppStorageTableDataContributorAssignment 'Microsoft.Authorizati
   properties: {
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
-      '0a9a7e1f-9b29-4b3c-9a3c-3b8b25e60c8e'
+      '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3'
     )
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
