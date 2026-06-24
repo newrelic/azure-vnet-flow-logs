@@ -1,6 +1,10 @@
-@description('Required. New Relic License Key')
+@description('Optional. New Relic License Key (modern ingest key). Provide either this or newRelicInsertKey; one of the two is required.')
 @secure()
-param newRelicLicenseKey string
+param newRelicLicenseKey string = ''
+
+@description('Optional. Legacy New Relic Insert Key (for older accounts). Provide either this or newRelicLicenseKey; one of the two is required.')
+@secure()
+param newRelicInsertKey string = ''
 
 @description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
 param sourceStorageAccountName string = ''
@@ -27,6 +31,17 @@ param retryInterval int = 2000
 
 @description('Optional. Enable debug logging for troubleshooting.')
 param debugEnabled bool = false
+
+@description('Optional. Number of hours to retain blob-cursor records before the cleanup job removes them.')
+@minValue(1)
+param cursorRetentionHours int = 48
+
+@description('Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC).')
+param cursorCleanupSchedule string = '0 0 3 * * *'
+
+@description('Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event.')
+@minValue(1)
+param maxConsecutiveFailures int = 3
 
 @description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
 @minValue(1)
@@ -328,19 +343,23 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'CURSOR_RETENTION_HOURS'
-          value: '48'
+          value: string(cursorRetentionHours)
         }
         {
           name: 'CURSOR_CLEANUP_SCHEDULE'
-          value: '0 0 3 * * *'
+          value: cursorCleanupSchedule
         }
         {
           name: 'MAX_CONSECUTIVE_FAILURES'
-          value: '3'
+          value: string(maxConsecutiveFailures)
         }
         {
           name: 'NR_LICENSE_KEY'
           value: newRelicLicenseKey
+        }
+        {
+          name: 'NR_INSERT_KEY'
+          value: newRelicInsertKey
         }
         {
           name: 'NR_ENDPOINT'

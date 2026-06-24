@@ -4,8 +4,16 @@
     "parameters": {
         "newRelicLicenseKey": {
             "type": "securestring",
+            "defaultValue": "",
             "metadata": {
-                "description": "Required. New Relic License Key"
+                "description": "Optional. New Relic License Key (modern ingest key). Provide either this or newRelicInsertKey; one of the two is required."
+            }
+        },
+        "newRelicInsertKey": {
+            "type": "securestring",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Optional. Legacy New Relic Insert Key (for older accounts). Provide either this or newRelicLicenseKey; one of the two is required."
             }
         },
         "sourceStorageAccountName": {
@@ -60,6 +68,29 @@
             "defaultValue": false,
             "metadata": {
                 "description": "Optional. Enable debug logging for troubleshooting."
+            }
+        },
+        "cursorRetentionHours": {
+            "type": "int",
+            "defaultValue": 48,
+            "minValue": 1,
+            "metadata": {
+                "description": "Optional. Number of hours to retain blob-cursor records before the cleanup job removes them."
+            }
+        },
+        "cursorCleanupSchedule": {
+            "type": "string",
+            "defaultValue": "0 0 3 * * *",
+            "metadata": {
+                "description": "Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC)."
+            }
+        },
+        "maxConsecutiveFailures": {
+            "type": "int",
+            "defaultValue": 3,
+            "minValue": 1,
+            "metadata": {
+                "description": "Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event."
             }
         },
         "maximumInstanceCount": {
@@ -409,19 +440,23 @@
                         },
                         {
                             "name": "CURSOR_RETENTION_HOURS",
-                            "value": "48"
+                            "value": "[string(parameters('cursorRetentionHours'))]"
                         },
                         {
                             "name": "CURSOR_CLEANUP_SCHEDULE",
-                            "value": "0 0 3 * * *"
+                            "value": "[parameters('cursorCleanupSchedule')]"
                         },
                         {
                             "name": "MAX_CONSECUTIVE_FAILURES",
-                            "value": "3"
+                            "value": "[string(parameters('maxConsecutiveFailures'))]"
                         },
                         {
                             "name": "NR_LICENSE_KEY",
                             "value": "[parameters('newRelicLicenseKey')]"
+                        },
+                        {
+                            "name": "NR_INSERT_KEY",
+                            "value": "[parameters('newRelicInsertKey')]"
                         },
                         {
                             "name": "NR_ENDPOINT",
