@@ -51,37 +51,39 @@ async function consumerHandler(messages, context) {
   let erroredEvents = 0;
 
   for (const message of msgArray) {
-    // Pre-fetch cursor to avoid redundant calls on error
-    let cursorData = null;
-    // Unwrap array-wrapped Event Grid events before normalizing the path
-    const rawMsg = Array.isArray(message) ? message[0] : message;
-    const blobPath = normalizeBlobPath(rawMsg) || 'unknown';
+    const eventArray = Array.isArray(message) ? message : [message];
 
-    try {
-      cursorData = await cursor.getCursor(blobPath);
-      const result = await processEvent(rawMsg, context, cursorData);
-      if (result) {
-        totalRecords += result.records;
-        totalBytes += result.bytes;
-        processedEvents++;
-      } else {
-        skippedEvents++;
-      }
-    } catch (err) {
-      erroredEvents++;
-      context.error(
-        `Error processing event for blob "${blobPath}": ${err.message}`
-      );
-      // Increment failure counter for poison event protection
-      // Reuse already-fetched cursor data to avoid redundant Table Storage call
+    for (const rawMsg of eventArray) {
+      // Pre-fetch cursor to avoid redundant calls on error
+      let cursorData = null;
+      const blobPath = normalizeBlobPath(rawMsg) || 'unknown';
+
       try {
-        const lastBlockId = cursorData?.lastBlockId || null;
-        const failureCount = cursorData?.failureCount || 0;
-        await cursor.incrementFailure(blobPath, lastBlockId, failureCount);
-      } catch (cursorErr) {
-        context.warn(
-          `Failed to increment failure counter: ${cursorErr.message}`
+        cursorData = await cursor.getCursor(blobPath);
+        const result = await processEvent(rawMsg, context, cursorData);
+        if (result) {
+          totalRecords += result.records;
+          totalBytes += result.bytes;
+          processedEvents++;
+        } else {
+          skippedEvents++;
+        }
+      } catch (err) {
+        erroredEvents++;
+        context.error(
+          `Error processing event for blob "${blobPath}": ${err.message}`
         );
+        // Increment failure counter for poison event protection
+        // Reuse already-fetched cursor data to avoid redundant Table Storage call
+        try {
+          const lastBlockId = cursorData?.lastBlockId || null;
+          const failureCount = cursorData?.failureCount || 0;
+          await cursor.incrementFailure(blobPath, lastBlockId, failureCount);
+        } catch (cursorErr) {
+          context.warn(
+            `Failed to increment failure counter: ${cursorErr.message}`
+          );
+        }
       }
     }
   }
@@ -120,7 +122,7 @@ async function processEvent(event, context, cursorData) {
   const { containerName, blobName } = delta.parseBlobPath(blobPath);
 
   // Step 2: Use provided cursor data and check for poison event
-  const { lastBlockId, failureCount } = cursorData;
+  const { lastBlockId, failureCount = 0 } = cursorData || {};
   if (failureCount >= config.maxConsecutiveFailures) {
     context.error(
       `Consumer: blob "${blobPath}" has failed ${failureCount} consecutive times. Skipping (poison event).`
@@ -167,6 +169,7 @@ async function processEvent(event, context, cursorData) {
       context.error(
         `Consumer: cursor commit failed for empty delta ${blobPath}: ${cursorErr.message}`
       );
+      throw cursorErr;
     }
     return { records: 0, bytes: data.length };
   }
@@ -174,6 +177,14 @@ async function processEvent(event, context, cursorData) {
   // Step 5: Transform records into NR log entries
   const pathMetadata = parser.extractMetadataFromPath(blobName);
   const logEntries = parser.transformRecords(records, pathMetadata);
+  const invalidTimestampCount = logEntries.filter(
+    (entry) => entry.attributes?.timestampParseFallback
+  ).length;
+  if (invalidTimestampCount > 0) {
+    context.warn(
+      `Consumer: ${invalidTimestampCount} flow tuples had invalid timestamps for ${blobPath}; fallback ingest-time timestamps were used.`
+    );
+  }
 
   if (config.debugEnabled) {
     context.log(
@@ -191,6 +202,7 @@ async function processEvent(event, context, cursorData) {
     context.error(
       `Consumer: cursor commit failed for ${blobPath}: ${cursorErr.message}. Records sent but cursor not advanced — possible duplicate delivery on retry.`
     );
+    throw cursorErr;
   }
 
   if (config.debugEnabled) {

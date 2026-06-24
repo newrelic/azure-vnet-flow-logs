@@ -91,6 +91,18 @@ describe('Parser', () => {
       expect(result.state).toBe('End');
       expect(result.packetsSrcToDest).toBeUndefined();
     });
+
+    it('should flag timestamp fallback when tuple timestamp is invalid', () => {
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
+      const tuple = 'not-a-timestamp,10.0.0.4,10.0.0.5,12345,443,6,O,A,E';
+      const result = parser.parseFlowTuple(tuple);
+
+      expect(result.timestamp).toBe(1700000000000);
+      expect(result.timestampParseFallback).toBe(true);
+      expect(result.rawTimestampField).toBe('not-a-timestamp');
+
+      nowSpy.mockRestore();
+    });
   });
 
   describe('parseRawDelta', () => {
@@ -375,6 +387,15 @@ describe('Delivery', () => {
       const payload = delivery.buildPayload(entries, context);
 
       expect(payload).toHaveLength(1);
+      expect(payload[0].common.attributes['instrumentation.provider']).toBe(
+        'azure'
+      );
+      expect(payload[0].common.attributes['instrumentation.name']).toBe(
+        'vnet-function'
+      );
+      expect(payload[0].common.attributes['instrumentation.version']).toBe(
+        config.version
+      );
       expect(payload[0].common.attributes.plugin.type).toBe('azure');
       expect(payload[0].common.attributes.plugin.version).toBe(config.version);
       expect(payload[0].common.attributes.azure.forwardername).toBe(
@@ -392,6 +413,81 @@ describe('Delivery', () => {
 
       expect(Buffer.isBuffer(compressed)).toBe(true);
       expect(compressed.length).toBeLessThan(data.length);
+    });
+  });
+
+  describe('retryWithFixedInterval', () => {
+    it('should retry on 5xx errors', async () => {
+      const context = { warn: jest.fn() };
+      let attempts = 0;
+
+      await delivery.retryWithFixedInterval(
+        async () => {
+          attempts++;
+          if (attempts === 1) {
+            const err = new Error('NR API returned 500');
+            err.statusCode = 500;
+            throw err;
+          }
+        },
+        3,
+        0,
+        context
+      );
+
+      expect(attempts).toBe(2);
+      expect(context.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Retrying in 0ms')
+      );
+    });
+
+    it('should not retry on non-retryable 4xx errors', async () => {
+      const context = { warn: jest.fn() };
+      let attempts = 0;
+
+      await expect(
+        delivery.retryWithFixedInterval(
+          async () => {
+            attempts++;
+            const err = new Error('NR API returned 400');
+            err.statusCode = 400;
+            throw err;
+          },
+          3,
+          0,
+          context
+        )
+      ).rejects.toThrow('NR API returned 400');
+
+      expect(attempts).toBe(1);
+      expect(context.warn).toHaveBeenCalledWith(
+        expect.stringContaining('non-retryable')
+      );
+    });
+
+    it('should honor Retry-After for 429 responses', async () => {
+      const context = { warn: jest.fn() };
+      let attempts = 0;
+
+      await delivery.retryWithFixedInterval(
+        async () => {
+          attempts++;
+          if (attempts === 1) {
+            const err = new Error('NR API returned 429');
+            err.statusCode = 429;
+            err.retryAfter = '0';
+            throw err;
+          }
+        },
+        3,
+        250,
+        context
+      );
+
+      expect(attempts).toBe(2);
+      expect(context.warn).toHaveBeenCalledWith(
+        expect.stringContaining('Retrying in 0ms')
+      );
     });
   });
 });
@@ -489,6 +585,37 @@ describe('Consumer', () => {
 
       expect(mockContext.log).toHaveBeenCalledWith(
         expect.stringContaining('3 processed')
+      );
+    });
+
+    it('should process all events in an array-wrapped Event Grid message', async () => {
+      const wrappedMessage = [
+        { subject: '/blob1.json' },
+        { subject: '/blob2.json' },
+      ];
+
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: '',
+        failureCount: 0,
+      });
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
+        data: '{"records":[]}',
+        lastBlockId: 'block-1',
+      });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      await consumer.consumerHandler([wrappedMessage], mockContext);
+
+      expect(mockContext.log).toHaveBeenCalledWith(
+        expect.stringContaining('2 processed')
       );
     });
 
@@ -608,6 +735,57 @@ describe('Consumer', () => {
 
       expect(result.records).toBe(1);
       expect(cursor.setCursor).toHaveBeenCalledWith('/blob.json', 'block-2');
+    });
+
+    it('should throw when cursor commit fails after successful delivery', async () => {
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      const cursorData = { lastBlockId: 'block-1', failureCount: 0 };
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
+        data: '{"records":[{"record":1}]}',
+        lastBlockId: 'block-2',
+      });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 1 }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([
+        { message: 'log', attributes: {} },
+      ]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockRejectedValue(new Error('table down'));
+
+      await expect(
+        consumer.processEvent({ subject: '/blob.json' }, mockContext, cursorData)
+      ).rejects.toThrow('table down');
+    });
+
+    it('should warn when timestamp fallback is used', async () => {
+      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({
+        containerName: 'test',
+        blobName: 'blob.json',
+      });
+      const cursorData = { lastBlockId: 'block-1', failureCount: 0 };
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
+        data: '{"records":[{"record":1}]}',
+        lastBlockId: 'block-2',
+      });
+      jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 1 }]);
+      jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
+      jest.spyOn(parser, 'transformRecords').mockReturnValue([
+        {
+          message: 'log',
+          attributes: { timestampParseFallback: true },
+        },
+      ]);
+      jest.spyOn(delivery, 'sendToNewRelic').mockResolvedValue();
+      jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      await consumer.processEvent({ subject: '/blob.json' }, mockContext, cursorData);
+
+      expect(mockContext.warn).toHaveBeenCalledWith(
+        expect.stringContaining('invalid timestamps')
+      );
     });
   });
 });

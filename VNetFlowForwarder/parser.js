@@ -245,8 +245,9 @@ function extractMetadataFromPath(blobPath) {
 function parseFlowTuple(tuple) {
   const fields = tuple.split(',');
   const ts = parseInt(fields[0], 10);
+  const timestampParseFallback = Number.isNaN(ts);
   const record = {
-    timestamp: Number.isNaN(ts) ? Date.now() : ts * 1000, // Convert to epoch ms
+    timestamp: timestampParseFallback ? Date.now() : ts * 1000, // Convert to epoch ms
     srcAddr: fields[1] || '',
     destAddr: fields[2] || '',
     srcPort: parseInt(fields[3], 10) || 0,
@@ -262,6 +263,10 @@ function parseFlowTuple(tuple) {
   if (fields[10]) record.bytesSrcToDest = parseInt(fields[10], 10) || 0;
   if (fields[11]) record.packetsDestToSrc = parseInt(fields[11], 10) || 0;
   if (fields[12]) record.bytesDestToSrc = parseInt(fields[12], 10) || 0;
+  if (timestampParseFallback) {
+    record.timestampParseFallback = true;
+    record.rawTimestampField = fields[0] || '';
+  }
 
   return record;
 }
@@ -342,6 +347,8 @@ function transformRecords(records, pathMetadata) {
               direction: parsed.direction,
               action: parsed.action,
               state: parsed.state,
+              timestampParseFallback: parsed.timestampParseFallback || false,
+              rawTimestampField: parsed.rawTimestampField || '',
               packetsSrcToDest: parsed.packetsSrcToDest,
               bytesSrcToDest: parsed.bytesSrcToDest,
               packetsDestToSrc: parsed.packetsDestToSrc,
