@@ -412,6 +412,32 @@ resource functionAppStorageBlobDataOwnerAssignment 'Microsoft.Authorization/role
   }
 }
 
+resource functionAppStorageQueueDataContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: functionStorageAccount
+  name: guid(functionApp.id, functionStorageAccount.id, 'StorageQueueDataContributor')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '974c5e8b-45b9-4d35-b0c5-9e1e7c6a3a1f'
+    )
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+resource functionAppStorageTableDataContributorAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  scope: functionStorageAccount
+  name: guid(functionApp.id, functionStorageAccount.id, 'StorageTableDataContributor')
+  properties: {
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '0a9a7e1f-9b29-4b3c-9a3c-3b8b25e60c8e'
+    )
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
 resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: deploymentIdentityName
   location: effectiveLocation
