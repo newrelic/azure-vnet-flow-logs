@@ -62,31 +62,31 @@ config.getApiKeyHeader = function () {
 
 /**
  * Validates that all required configuration is present.
- * Throws if critical settings are missing.
+ * Throws if required runtime app settings are missing.
  */
 config.validate = function () {
   if (!this.nrLicenseKey && !this.nrInsertKey) {
     throw new Error(
-      'Missing NR_LICENSE_KEY or NR_INSERT_KEY. Configure at least one.'
+      'Missing NR_LICENSE_KEY or NR_INSERT_KEY app setting. Configure at least one runtime key.'
     );
   }
   if (!this.sourceStorageConnection) {
     throw new Error(
-      'Missing SOURCE_STORAGE_CONNECTION. Set the source storage account connection string.'
+      'Missing SOURCE_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
   if (!this.cursorStorageConnection) {
     throw new Error(
-      'Missing CURSOR_STORAGE_CONNECTION. Set the cursor storage account connection string.'
+      'Missing CURSOR_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
   if (!this.eventhubConnection) {
     throw new Error(
-      'Missing EVENTHUB_CONSUMER_CONNECTION. Set the Event Hub connection string.'
+      'Missing EVENTHUB_CONSUMER_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
   if (!this.eventhubName) {
-    throw new Error('Missing EVENTHUB_NAME. Set the Event Hub name.');
+    throw new Error('Missing EVENTHUB_NAME app setting. This value is deployment-managed and must be present at runtime.');
   }
   try {
     new URL(this.nrEndpoint);
