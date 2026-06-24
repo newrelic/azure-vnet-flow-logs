@@ -208,6 +208,28 @@ describe('Parser', () => {
     });
   });
 
+  describe('parseTargetResourceContext', () => {
+    it('should parse VNet target resource context', () => {
+      const context = parser.parseTargetResourceContext(
+        '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet'
+      );
+
+      expect(context.targetResourceType).toBe('virtualnetworks');
+      expect(context.virtualNetworkName).toBe('my-vnet');
+      expect(context.subnetName).toBeUndefined();
+    });
+
+    it('should parse subnet target resource context', () => {
+      const context = parser.parseTargetResourceContext(
+        '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/my-subnet'
+      );
+
+      expect(context.targetResourceType).toBe('virtualnetworks/subnets');
+      expect(context.virtualNetworkName).toBe('my-vnet');
+      expect(context.subnetName).toBe('my-subnet');
+    });
+  });
+
   describe('transformRecords', () => {
     it('should transform records with flow tuples into log entries', () => {
       const records = [
@@ -284,6 +306,44 @@ describe('Parser', () => {
       // Falls back to emitting the record itself
       expect(entries).toHaveLength(1);
       expect(entries[0].timestamp).toBe(Date.parse('2024-01-01T00:00:00Z'));
+    });
+
+    it('should enrich entries with VNet and subnet names from targetResourceID', () => {
+      const records = [
+        {
+          time: '2024-01-01T00:00:00Z',
+          category: 'FlowLogFlowEvent',
+          operationName: 'FlowLogFlowEvent',
+          targetResourceID:
+            '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/my-subnet',
+          flowRecords: {
+            flows: [
+              {
+                aclID: 'acl-1',
+                flowGroups: [
+                  {
+                    rule: 'AllowAll',
+                    flowTuples: [
+                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,10,1500,8,1200',
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ];
+
+      const entries = parser.transformRecords(records, {});
+
+      expect(entries).toHaveLength(1);
+      expect(entries[0].attributes.targetResourceType).toBe(
+        'virtualnetworks/subnets'
+      );
+      expect(entries[0].attributes.virtualNetworkName).toBe('my-vnet');
+      expect(entries[0].attributes.subnetName).toBe('my-subnet');
+      expect(entries[0].attributes.resourceType).toBe('virtualNetworks');
+      expect(entries[0].attributes.resourceName).toBe('my-vnet');
     });
   });
 });

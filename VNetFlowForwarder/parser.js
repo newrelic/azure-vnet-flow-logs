@@ -272,6 +272,60 @@ function parseFlowTuple(tuple) {
 }
 
 /**
+ * Parse Azure network target resource context from targetResourceID.
+ *
+ * Example IDs:
+ * - /subscriptions/.../providers/Microsoft.Network/virtualNetworks/{vnet}
+ * - /subscriptions/.../providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
+ * - /subscriptions/.../providers/Microsoft.Network/networkInterfaces/{nic}
+ *
+ * @param {string} targetResourceID - Azure target resource ID
+ * @returns {Object} Parsed resource context
+ */
+function parseTargetResourceContext(targetResourceID) {
+  if (!targetResourceID || typeof targetResourceID !== 'string') {
+    return {};
+  }
+
+  const match = targetResourceID.match(/providers\/Microsoft\.Network\/(.+)$/i);
+  if (!match || !match[1]) {
+    return {};
+  }
+
+  const segments = match[1].split('/').filter(Boolean);
+  if (segments.length < 2) {
+    return {};
+  }
+
+  const typeParts = [];
+  const nameByType = {};
+
+  for (let i = 0; i + 1 < segments.length; i += 2) {
+    const typePart = segments[i];
+    const namePart = segments[i + 1];
+
+    typeParts.push(typePart.toLowerCase());
+    nameByType[typePart.toLowerCase()] = namePart;
+  }
+
+  const context = {
+    targetResourceType: typeParts.join('/'),
+  };
+
+  if (nameByType.virtualnetworks) {
+    context.virtualNetworkName = nameByType.virtualnetworks;
+  }
+  if (nameByType.subnets) {
+    context.subnetName = nameByType.subnets;
+  }
+  if (nameByType.networkinterfaces) {
+    context.networkInterfaceName = nameByType.networkinterfaces;
+  }
+
+  return context;
+}
+
+/**
  * Transform parsed PT1H.json records into New Relic log entries.
  *
  * @param {Array<Object>} records - Parsed JSON records from PT1H.json
@@ -287,6 +341,8 @@ function transformRecords(records, pathMetadata) {
     // blob path metadata (which may point to NetworkWatcherRG instead of the VNet's RG)
     const enriched = { ...pathMetadata };
     if (record.targetResourceID) {
+      const targetContext = parseTargetResourceContext(record.targetResourceID);
+
       const targetMatch = record.targetResourceID.match(
         /providers\/Microsoft\.Network\/([^/]+)\/([^/]+)/i
       );
@@ -300,6 +356,19 @@ function transformRecords(records, pathMetadata) {
       if (subMatch) enriched.subscriptionId = subMatch[1].toLowerCase();
       const rgMatch = record.targetResourceID.match(/resourceGroups\/([^/]+)/i);
       if (rgMatch) enriched.resourceGroup = rgMatch[1];
+
+      if (targetContext.virtualNetworkName) {
+        enriched.virtualNetworkName = targetContext.virtualNetworkName;
+      }
+      if (targetContext.subnetName) {
+        enriched.subnetName = targetContext.subnetName;
+      }
+      if (targetContext.networkInterfaceName) {
+        enriched.networkInterfaceName = targetContext.networkInterfaceName;
+      }
+      if (targetContext.targetResourceType) {
+        enriched.targetResourceType = targetContext.targetResourceType;
+      }
     }
 
     const baseAttrs = {
@@ -314,6 +383,10 @@ function transformRecords(records, pathMetadata) {
       flowLogGUID: record.flowLogGUID || '',
       flowLogResourceID: record.flowLogResourceID || '',
       targetResourceID: record.targetResourceID || '',
+      targetResourceType: enriched.targetResourceType || '',
+      virtualNetworkName: enriched.virtualNetworkName || '',
+      subnetName: enriched.subnetName || '',
+      networkInterfaceName: enriched.networkInterfaceName || '',
     };
 
     // Extract flow tuples from nested structure
@@ -381,4 +454,5 @@ module.exports = {
   DIRECTION_MAP,
   ACTION_MAP,
   STATE_MAP,
+  parseTargetResourceContext,
 };
