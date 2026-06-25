@@ -52,8 +52,9 @@
         },
         "newRelicEndpoint": {
             "type": "string",
-            "defaultValue": "https://log-api.newrelic.com/log/v1",
+            "defaultValue": "https://staging-log-api.newrelic.com/log/v1",
             "allowedValues": [
+                "https://staging-log-api.newrelic.com/log/v1",
                 "https://log-api.newrelic.com/log/v1",
                 "https://log-api.eu.newrelic.com/log/v1",
                 "https://log-api.jp.newrelic.com/log/v1"
@@ -114,6 +115,13 @@
             "metadata": {
                 "description": "Optional. Enable debug logging for troubleshooting."
             }
+        },
+        "functionAppPackageUri": {
+            "type": "string",
+            "defaultValue": "",
+            "metadata": {
+                "description": "Optional. URI for a zip package containing the Function App code. If empty, the default GitHub release artifact is used."
+            }
         }
     },
     "variables": {
@@ -143,7 +151,7 @@
 
         "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
 
-        "vnetFlowLogsForwarderFunctionArtifact": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
+        "vnetFlowLogsForwarderFunctionArtifact": "[if(empty(parameters('functionAppPackageUri')), 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip', parameters('functionAppPackageUri'))]",
 
         "privateNetworkASP": {
             "kind": "app",

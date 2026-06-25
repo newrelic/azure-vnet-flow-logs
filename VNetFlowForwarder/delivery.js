@@ -12,7 +12,7 @@ const zlib = require('zlib');
 const config = require('./config');
 
 const INSTRUMENTATION_PROVIDER = 'azure';
-const INSTRUMENTATION_NAME = 'vnet-function';
+const INSTRUMENTATION_NAME = 'vnet-app';
 const PLUGIN_TYPE = 'azure';
 const FORWARDER_NAME = 'VNetFlowLogsForwarder';
 const RETRYABLE_NETWORK_ERROR_CODES = new Set([
