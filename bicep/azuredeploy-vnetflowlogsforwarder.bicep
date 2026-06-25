@@ -56,6 +56,13 @@ param maximumInstanceCount int = 100
 ])
 param instanceMemoryMB int = 2048
 
+@description('Optional. Event Hub scaling profile. \'Basic\' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). \'Enterprise\' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
+@allowed([
+  'Basic'
+  'Enterprise'
+])
+param eventHubScalingMode string = 'Basic'
+
 @description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
 param disablePublicAccessToStorageAccount bool = false
 
@@ -167,7 +174,9 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
     capacity: 1
   }
   properties: {
-    zoneRedundant: false
+    minimumTlsVersion: '1.2'
+    isAutoInflateEnabled: (eventHubScalingMode == 'Enterprise')
+    maximumThroughputUnits: (eventHubScalingMode == 'Enterprise' ? 40 : 0)
   }
 }
 
@@ -176,7 +185,7 @@ resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs
   name: resolvedEventHubName
   properties: {
     messageRetentionInDays: 1
-    partitionCount: 32
+    partitionCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
   }
 }
 
