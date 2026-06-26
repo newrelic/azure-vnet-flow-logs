@@ -154,6 +154,16 @@ describe('Parser', () => {
       expect(meta.resourceName).toBe('myNsg');
     });
 
+    it('should extract subscription and resource group from VNet flowLogResourceID format', () => {
+      const path =
+        'flowLogResourceID=/9C99D7C5-7653-4B53-AE61-DAEFF13D8569_BPAVAN-E2E-VNETFLOW-STAGING-BATCH1/NETWORKWATCHER_CENTRALINDIA_FLOWLOG/y=2024/m=01/d=01/h=00/m=00/macAddress=001122334455/PT1H.json';
+      const meta = parser.extractMetadataFromPath(path);
+
+      expect(meta.subscriptionId).toBe('9c99d7c5-7653-4b53-ae61-daeff13d8569');
+      expect(meta.resourceGroup).toBe('bpavan-e2e-vnetflow-staging-batch1');
+      expect(meta.macAddress).toBe('001122334455');
+    });
+
     it('should handle partial paths gracefully', () => {
       const meta = parser.extractMetadataFromPath('some/random/path.json');
       expect(meta.subscriptionId).toBeUndefined();

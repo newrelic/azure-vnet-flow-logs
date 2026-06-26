@@ -20,10 +20,14 @@ jest.mock('@azure/event-hubs', () => ({
 }));
 
 jest.mock('@azure/data-tables', () => ({
-  TableClient: jest.fn().mockImplementation(() => ({
-    getEntity: jest.fn(),
-    upsertEntity: jest.fn(),
-  })),
+  TableClient: {
+    fromConnectionString: jest.fn().mockImplementation(() => ({
+      getEntity: jest.fn(),
+      upsertEntity: jest.fn(),
+      listEntities: jest.fn(),
+      deleteEntity: jest.fn(),
+    })),
+  },
 }));
 
 jest.mock('@azure/storage-blob', () => ({

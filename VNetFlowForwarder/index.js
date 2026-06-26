@@ -16,7 +16,8 @@ const cursor = require('./cursor');
 let configValidated = false;
 
 /**
- * Validate configuration on first invocation (deferred for testability).
+ * Validate configuration once per cold start (deferred for testability).
+ * Intentionally one-shot: warm invocations reuse the same module instance.
  */
 function ensureConfigValidated() {
   if (!configValidated) {

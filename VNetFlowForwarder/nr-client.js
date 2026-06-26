@@ -13,8 +13,6 @@ const config = require('./config');
 
 const INSTRUMENTATION_PROVIDER = 'azure';
 const INSTRUMENTATION_NAME = 'vnet-app';
-const PLUGIN_TYPE = 'azure';
-const FORWARDER_NAME = 'VNetFlowLogsForwarder';
 const RETRYABLE_NETWORK_ERROR_CODES = new Set([
   'ETIMEDOUT',
   'ECONNRESET',
@@ -42,14 +40,6 @@ function buildPayload(logEntries, context) {
           'instrumentation.provider': INSTRUMENTATION_PROVIDER,
           'instrumentation.name': INSTRUMENTATION_NAME,
           'instrumentation.version': config.version,
-          plugin: {
-            type: PLUGIN_TYPE,
-            version: config.version,
-          },
-          azure: {
-            forwardername: FORWARDER_NAME,
-            invocationid: context.invocationId || '',
-          },
           tags,
         },
       },
