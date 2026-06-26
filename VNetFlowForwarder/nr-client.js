@@ -276,11 +276,4 @@ function sleep(ms) {
 
 module.exports = {
   sendToNewRelic,
-  buildPayload,
-  parseTags,
-  compress,
-  httpSend,
-  retryWithFixedInterval,
-  isRetryableError,
-  parseRetryAfterMs,
 };

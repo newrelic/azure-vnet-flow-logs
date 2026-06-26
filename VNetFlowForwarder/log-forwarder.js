@@ -16,7 +16,7 @@ const config = require('./config');
 const cursor = require('./cursor');
 const delta = require('./delta');
 const parser = require('./parser');
-const delivery = require('./delivery');
+const nrClient = require('./nr-client');
 
 /**
  * Normalize a blob path from an Event Hub/Event Grid message.
@@ -33,6 +33,39 @@ function normalizeBlobPath(event) {
     }
   }
   return '';
+}
+
+/**
+ * Emit a debug log using Azure Functions logger levels.
+ * Visibility is controlled by host.json/app settings log level configuration.
+ */
+function logDebug(context, message) {
+  if (typeof context?.debug === 'function') {
+    context.debug(message);
+  }
+}
+
+/**
+ * Handle a per-event processing error and update poison-event failure tracking.
+ *
+ * @param {Object} context - Azure Function context
+ * @param {string} blobPath - Normalized blob path
+ * @param {Error} err - Processing error
+ * @param {Object|null} cursorData - Pre-fetched cursor data {lastBlockId, failureCount}
+ * @returns {Promise<void>}
+ */
+async function handleProcessingError(context, blobPath, err, cursorData) {
+  context.error(`Error processing event for blob "${blobPath}": ${err.message}`);
+
+  // Increment failure counter for poison event protection.
+  // Reuse pre-fetched cursor data to avoid an extra Table Storage call.
+  try {
+    const lastBlockId = cursorData?.lastBlockId || null;
+    const failureCount = cursorData?.failureCount || 0;
+    await cursor.incrementFailure(blobPath, lastBlockId, failureCount);
+  } catch (cursorErr) {
+    context.warn(`Failed to increment failure counter: ${cursorErr.message}`);
+  }
 }
 
 /**
@@ -70,20 +103,7 @@ async function consumerHandler(messages, context) {
         }
       } catch (err) {
         erroredEvents++;
-        context.error(
-          `Error processing event for blob "${blobPath}": ${err.message}`
-        );
-        // Increment failure counter for poison event protection
-        // Reuse already-fetched cursor data to avoid redundant Table Storage call
-        try {
-          const lastBlockId = cursorData?.lastBlockId || null;
-          const failureCount = cursorData?.failureCount || 0;
-          await cursor.incrementFailure(blobPath, lastBlockId, failureCount);
-        } catch (cursorErr) {
-          context.warn(
-            `Failed to increment failure counter: ${cursorErr.message}`
-          );
-        }
+        await handleProcessingError(context, blobPath, err, cursorData);
       }
     }
   }
@@ -114,9 +134,7 @@ async function processEvent(event, context, cursorData) {
     return null;
   }
 
-  if (config.debugEnabled) {
-    context.log(`Consumer: processing ${blobPath}`);
-  }
+  logDebug(context, `Consumer: processing ${blobPath}`);
 
   // Step 1: Parse the blob path
   const { containerName, blobName } = delta.parseBlobPath(blobPath);
@@ -129,9 +147,7 @@ async function processEvent(event, context, cursorData) {
     );
     return null;
   }
-  if (config.debugEnabled) {
-    context.log(`Consumer: cursor for ${blobPath} = ${lastBlockId}`);
-  }
+  logDebug(context, `Consumer: cursor for ${blobPath} = ${lastBlockId}`);
 
   // Step 3: Download delta
   let deltaResult;
@@ -150,9 +166,7 @@ async function processEvent(event, context, cursorData) {
   }
 
   if (!deltaResult) {
-    if (config.debugEnabled) {
-      context.log(`Consumer: no new blocks for ${blobPath}. Skipping.`);
-    }
+    logDebug(context, `Consumer: no new blocks for ${blobPath}. Skipping.`);
     return null;
   }
 
@@ -186,14 +200,13 @@ async function processEvent(event, context, cursorData) {
     );
   }
 
-  if (config.debugEnabled) {
-    context.log(
-      `Consumer: ${records.length} records -> ${logEntries.length} log entries from ${blobPath}`
-    );
-  }
+  logDebug(
+    context,
+    `Consumer: ${records.length} records -> ${logEntries.length} log entries from ${blobPath}`
+  );
 
   // Step 6: Send to New Relic
-  await delivery.sendToNewRelic(logEntries, context);
+  await nrClient.sendToNewRelic(logEntries, context);
 
   // Step 7: Commit cursor (only after successful delivery)
   try {
@@ -205,16 +218,14 @@ async function processEvent(event, context, cursorData) {
     throw cursorErr;
   }
 
-  if (config.debugEnabled) {
-    context.log(
-      `Consumer: cursor advanced to block ${newLastBlockId} for ${blobPath}`
-    );
-  }
+  logDebug(
+    context,
+    `Consumer: cursor advanced to block ${newLastBlockId} for ${blobPath}`
+  );
 
   return { records: logEntries.length, bytes: data.length };
 }
 
 module.exports = {
   consumerHandler,
-  processEvent,
 };

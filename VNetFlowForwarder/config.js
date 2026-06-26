@@ -35,9 +35,6 @@ const config = {
   // Poison event protection
   maxConsecutiveFailures: _parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 3),
 
-  // Logging
-  debugEnabled: process.env.DEBUG_ENABLED === 'true',
-
   // Limits
   maxPayloadSize: 1000 * 1024, // ~1 MB compressed
   maxMessagesPerPayload: 900,

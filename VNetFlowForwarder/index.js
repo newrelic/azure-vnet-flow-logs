@@ -10,7 +10,7 @@
 
 const { app } = require('@azure/functions');
 const config = require('./config');
-const { consumerHandler } = require('./consumer');
+const { consumerHandler } = require('./log-forwarder');
 const cursor = require('./cursor');
 
 let configValidated = false;

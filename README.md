@@ -66,7 +66,7 @@ az deployment group create \
 | `newRelicTags` | No | Custom tags for logs (e.g., `env:prod;team:network`) |
 | `maxRetries` | No | Max retries for NR delivery (default: 3) |
 | `retryInterval` | No | Retry interval in ms (default: 2000) |
-| `debugEnabled` | No | Enable debug logging (default: false) |
+| `debugEnabled` | No | Deprecated. Use logger level configuration in `host.json` / app settings to control debug output. |
 | `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
 
 ### Resources Created
@@ -104,7 +104,6 @@ The function uses the following environment variables (automatically configured 
 | `NR_MAX_RETRIES` | Max retries for failed NR requests | `3` |
 | `NR_RETRY_INTERVAL` | Retry interval in milliseconds | `2000` |
 | `EVENTHUB_CONSUMER_GROUP` | Event Hub consumer group | `$Default` |
-| `DEBUG_ENABLED` | Enable verbose debug logging | `false` |
 | `CURSOR_RETENTION_HOURS` | Hours to retain cursor entries | `48` |
 | `CURSOR_CLEANUP_SCHEDULE` | Cron schedule for cursor cleanup | `0 0 3 * * *` (3 AM daily) |
 | `MAX_CONSECUTIVE_FAILURES` | Failures before marking blob as poison | `3` |
@@ -196,11 +195,11 @@ npm run lint
 | Module | Description |
 |--------|-------------|
 | `index.js` | Function registration (Event Hub trigger + Timer trigger for cleanup) |
-| `consumer.js` | Main processing logic: cursor → delta → parse → deliver → commit |
+| `log-forwarder.js` | Main processing logic: cursor → delta → parse → deliver → commit |
 | `parser.js` | Parses VNet flow log JSON and flow tuples into structured records |
 | `cursor.js` | Cursor management via Azure Table Storage with cleanup |
 | `delta.js` | Downloads only new blob blocks since last cursor position |
-| `delivery.js` | Batches, compresses (gzip), and delivers logs to New Relic |
+| `nr-client.js` | Batches, compresses (gzip), and delivers logs to New Relic |
 | `config.js` | Centralized configuration from environment variables |
 
 ## Log Format
