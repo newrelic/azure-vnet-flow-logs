@@ -7,9 +7,13 @@
  * to the New Relic Logs API with retry logic.
  */
 
+const axios = require('axios');
+const axiosRetryImport = require('axios-retry');
 const https = require('https');
 const zlib = require('zlib');
 const config = require('./config');
+
+const axiosRetry = axiosRetryImport.default || axiosRetryImport;
 
 const INSTRUMENTATION_PROVIDER = 'azure';
 const INSTRUMENTATION_NAME = 'vnet-app';
@@ -23,6 +27,24 @@ const RETRYABLE_NETWORK_ERROR_CODES = new Set([
 
 // Reuse TCP connections across requests within the same function invocation
 const httpsAgent = new https.Agent({ keepAlive: true });
+
+// Convert non-202 responses into errors before axios-retry evaluates retry rules.
+axios.interceptors.response.use((response) => {
+  const requiresAcceptedStatus =
+    response?.config?.metadata?.requiresAcceptedStatus === true;
+  if (requiresAcceptedStatus && response.status !== 202) {
+    const err = new Error(
+      `NR API returned ${response.status}: ${truncateBody(response.data)}`
+    );
+    err.response = response;
+    err.config = response.config;
+    throw err;
+  }
+  return response;
+});
+
+// Install retry interceptor once; per-request retry policy is configured in request options.
+axiosRetry(axios);
 
 /**
  * Build the New Relic payload envelope.
@@ -125,12 +147,7 @@ async function compressAndSend(logEntries, context) {
     return;
   }
 
-  await retryWithFixedInterval(
-    () => httpSend(compressed, context),
-    config.nrMaxRetries,
-    config.nrRetryInterval,
-    context
-  );
+  await httpSend(compressed, context);
 }
 
 /**
@@ -140,96 +157,68 @@ async function compressAndSend(logEntries, context) {
  * @param {Object} context
  * @returns {Promise<void>}
  */
-function httpSend(compressedData, context) {
-  return new Promise((resolve, reject) => {
-    const urlObj = new URL(config.nrEndpoint);
-    const options = {
-      hostname: urlObj.hostname,
-      port: 443,
-      path: urlObj.pathname,
-      protocol: urlObj.protocol,
-      method: 'POST',
-      agent: httpsAgent,
+async function httpSend(compressedData, context) {
+  try {
+    await axios.post(config.nrEndpoint, compressedData, {
+      httpsAgent,
+      responseType: 'text',
+      validateStatus: () => true,
+      metadata: {
+        requiresAcceptedStatus: true,
+      },
       headers: {
         'Content-Type': 'application/json',
         'Content-Encoding': 'gzip',
         [config.getApiKeyHeader()]: config.getApiKey(),
       },
-    };
-
-    const req = https.request(options, (res) => {
-      let body = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => {
-        // Cap response body accumulation to prevent memory issues from adversarial endpoints
-        if (body.length < 4096) body += chunk;
-      });
-      res.on('end', () => {
-        if (res.statusCode === 202) {
-          resolve();
-        } else {
-          const err = new Error(`NR API returned ${res.statusCode}: ${body}`);
-          err.statusCode = res.statusCode;
-          err.responseBody = body;
-          err.retryAfter = res.headers?.['retry-after'];
-          reject(err);
-        }
-      });
+      'axios-retry': {
+        retries: config.nrMaxRetries,
+        retryCondition: (error) => isRetryableError(normalizeAxiosError(error)),
+        retryDelay: (_retryCount, error) =>
+          getRetryDelay(normalizeAxiosError(error), config.nrRetryInterval),
+        onRetry: (retryCount, error) => {
+          const normalized = normalizeAxiosError(error);
+          const retryDelay = getRetryDelay(normalized, config.nrRetryInterval);
+          context.warn(
+            `NR delivery attempt ${retryCount} failed: ${normalized.message}. Retrying in ${retryDelay}ms...`
+          );
+        },
+      },
     });
-
-    req.on('error', (err) => {
-      reject(err);
-    });
-
-    req.write(compressedData);
-    req.end();
-  });
+  } catch (error) {
+    const normalized = normalizeAxiosError(error);
+    if (!isRetryableError(normalized)) {
+      context.warn(
+        `NR delivery failed with non-retryable error: ${normalized.message}`
+      );
+    }
+    throw normalized;
+  }
 }
 
-/**
- * Retry a function with fixed interval between attempts.
- *
- * @param {Function} fn - Async function to retry
- * @param {number} maxRetries
- * @param {number} interval - Milliseconds between retries
- * @param {Object} context
- * @returns {Promise<void>}
- */
-async function retryWithFixedInterval(fn, maxRetries, interval, context) {
-  let lastError;
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      await fn();
-      return;
-    } catch (err) {
-      lastError = err;
-      const retryable = isRetryableError(err);
-      if (attempt < maxRetries && retryable) {
-        let retryDelay = interval;
-        if (err.statusCode === 429) {
-          const retryAfterDelay = parseRetryAfterMs(err.retryAfter);
-          if (retryAfterDelay !== null) {
-            retryDelay = retryAfterDelay;
-          }
-        }
-        context.warn(
-          `NR delivery attempt ${attempt + 1} failed: ${
-            err.message
-          }. Retrying in ${retryDelay}ms...`
-        );
-        await sleep(retryDelay);
-        continue;
-      }
+function normalizeAxiosError(error) {
+  const statusCode = error?.response?.status;
+  const responseHeaders = error?.response?.headers || {};
+  const responseBody = truncateBody(error?.response?.data);
 
-      if (!retryable) {
-        context.warn(
-          `NR delivery attempt ${attempt + 1} failed with non-retryable error: ${err.message}`
-        );
-      }
-      break;
-    }
+  if (typeof statusCode === 'number') {
+    const err = new Error(`NR API returned ${statusCode}: ${responseBody}`);
+    err.statusCode = statusCode;
+    err.responseBody = responseBody;
+    err.retryAfter =
+      responseHeaders['retry-after'] || responseHeaders['Retry-After'];
+    return err;
   }
-  throw lastError;
+
+  const err = new Error(error?.message || 'NR API request failed');
+  err.code = error?.code;
+  return err;
+}
+
+function truncateBody(body) {
+  if (body === null || body === undefined) return '';
+  const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+  return bodyStr.slice(0, 4096);
 }
 
 function isRetryableError(err) {
@@ -238,6 +227,16 @@ function isRetryableError(err) {
     return err.statusCode === 429 || err.statusCode >= 500;
   }
   return RETRYABLE_NETWORK_ERROR_CODES.has(err.code);
+}
+
+function getRetryDelay(err, fallbackDelayMs) {
+  if (err?.statusCode === 429) {
+    const retryAfterDelay = parseRetryAfterMs(err.retryAfter);
+    if (retryAfterDelay !== null) {
+      return retryAfterDelay;
+    }
+  }
+  return fallbackDelayMs;
 }
 
 function parseRetryAfterMs(retryAfterHeader) {
@@ -258,10 +257,6 @@ function parseRetryAfterMs(retryAfterHeader) {
   }
 
   return null;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 module.exports = {

@@ -55,9 +55,12 @@ function logDebug(context, message) {
  * @returns {Promise<void>}
  */
 async function handleProcessingError(context, blobPath, err, cursorData) {
-  context.error(`Error processing event for blob "${blobPath}": ${err.message}`);
+  context.error(
+    `Error processing event for blob "${blobPath}": ${err.message}`
+  );
 
   // Increment failure counter for poison event protection.
+  // This path is reached only after nr-client retries are exhausted or on other hard failures.
   // Reuse pre-fetched cursor data to avoid an extra Table Storage call.
   try {
     const lastBlockId = cursorData?.lastBlockId || null;
@@ -143,7 +146,7 @@ async function processEvent(event, context, cursorData) {
   const { lastBlockId, failureCount = 0 } = cursorData || {};
   if (failureCount >= config.maxConsecutiveFailures) {
     context.error(
-      `Consumer: blob "${blobPath}" has failed ${failureCount} consecutive times. Skipping (poison event).`
+      `Consumer: blob "${blobPath}" has failed ${failureCount} consecutive times (threshold: ${config.maxConsecutiveFailures}). Skipping (poison event).`
     );
     return null;
   }

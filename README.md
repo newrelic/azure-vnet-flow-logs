@@ -106,7 +106,29 @@ The function uses the following environment variables (automatically configured 
 | `EVENTHUB_CONSUMER_GROUP` | Event Hub consumer group | `$Default` |
 | `CURSOR_RETENTION_HOURS` | Hours to retain cursor entries | `48` |
 | `CURSOR_CLEANUP_SCHEDULE` | Cron schedule for cursor cleanup | `0 0 3 * * *` (3 AM daily) |
-| `MAX_CONSECUTIVE_FAILURES` | Failures before marking blob as poison | `3` |
+| `MAX_CONSECUTIVE_FAILURES` | Failures before marking blob as poison | `5` |
+
+### Logging Level Configuration
+
+Debug output is controlled through `host.json` logging levels (instead of a `debugEnabled` runtime flag).
+
+The default `host.json` configuration in this repo uses `Information` level.
+To temporarily enable debug logs at runtime, set app settings such as:
+
+- `AzureFunctionsJobHost__logging__logLevel__Function=Debug`
+- `AzureFunctionsJobHost__logging__logLevel__default=Information`
+
+This enables `context.debug()` messages while keeping host-level noise lower.
+
+### Failure and Recovery Behavior
+
+- New Relic delivery is retried first in the NR client (for 429, 5xx, and retryable network errors).
+- The blob failure counter is incremented only when those delivery retries are fully exhausted, or when another hard failure occurs in processing.
+- Default poison threshold is `MAX_CONSECUTIVE_FAILURES=5`. After this threshold, that blob path is skipped to prevent infinite retries on permanently bad data.
+- If New Relic is unavailable only briefly, retries usually succeed and no blob failure increment occurs.
+- If a blob reaches poison threshold, that blob data may be skipped until operator intervention (for example, raising `MAX_CONSECUTIVE_FAILURES` and replaying from storage/event source).
+- If data is sent successfully but cursor commit fails, duplicate delivery is possible on retry (at-least-once behavior).
+- Processing does not require new events for retry behavior itself, but replay/recovery of already skipped blobs requires an operator-triggered replay strategy.
 
 ### New Relic Endpoints
 

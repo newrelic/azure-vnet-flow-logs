@@ -6,6 +6,7 @@ const parser = require('../VNetFlowForwarder/parser');
 const cursor = require('../VNetFlowForwarder/cursor');
 const delta = require('../VNetFlowForwarder/delta');
 const nrClient = require('../VNetFlowForwarder/nr-client');
+const config = require('../VNetFlowForwarder/config');
 const logForwarder = require('../VNetFlowForwarder/log-forwarder');
 
 describe('Log Forwarder', () => {
@@ -26,12 +27,20 @@ describe('Log Forwarder', () => {
           '/blobServices/default/containers/test/blobs/resource/PT1H.json',
       };
 
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 0 });
-      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
-      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
+      jest
+        .spyOn(cursor, 'getCursor')
+        .mockResolvedValue({ lastBlockId: '', failureCount: 0 });
+      jest
+        .spyOn(delta, 'parseBlobPath')
+        .mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest
+        .spyOn(delta, 'downloadDelta')
+        .mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
       jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
       jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
-      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest
+        .spyOn(parser, 'transformRecords')
+        .mockReturnValue([{ message: 'log' }]);
       jest.spyOn(nrClient, 'sendToNewRelic').mockResolvedValue();
       jest.spyOn(cursor, 'setCursor').mockResolvedValue();
 
@@ -49,12 +58,20 @@ describe('Log Forwarder', () => {
         { subject: '/blob3.json' },
       ];
 
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 0 });
-      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
-      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
+      jest
+        .spyOn(cursor, 'getCursor')
+        .mockResolvedValue({ lastBlockId: '', failureCount: 0 });
+      jest
+        .spyOn(delta, 'parseBlobPath')
+        .mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest
+        .spyOn(delta, 'downloadDelta')
+        .mockResolvedValue({ data: '{"records":[]}', lastBlockId: 'block-1' });
       jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
       jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
-      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest
+        .spyOn(parser, 'transformRecords')
+        .mockReturnValue([{ message: 'log' }]);
       jest.spyOn(nrClient, 'sendToNewRelic').mockResolvedValue();
       jest.spyOn(cursor, 'setCursor').mockResolvedValue();
 
@@ -85,7 +102,9 @@ describe('Log Forwarder', () => {
       });
       jest.spyOn(parser, 'parseRawDelta').mockReturnValue([{ record: 'data' }]);
       jest.spyOn(parser, 'extractMetadataFromPath').mockReturnValue({});
-      jest.spyOn(parser, 'transformRecords').mockReturnValue([{ message: 'log' }]);
+      jest
+        .spyOn(parser, 'transformRecords')
+        .mockReturnValue([{ message: 'log' }]);
       jest.spyOn(nrClient, 'sendToNewRelic').mockResolvedValue();
       jest.spyOn(cursor, 'setCursor').mockResolvedValue();
 
@@ -119,10 +138,18 @@ describe('Log Forwarder', () => {
     });
 
     it('should count skipped events', async () => {
-      jest.spyOn(cursor, 'getCursor').mockResolvedValue({ lastBlockId: '', failureCount: 3 });
-      jest.spyOn(delta, 'parseBlobPath').mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest.spyOn(cursor, 'getCursor').mockResolvedValue({
+        lastBlockId: '',
+        failureCount: config.maxConsecutiveFailures,
+      });
+      jest
+        .spyOn(delta, 'parseBlobPath')
+        .mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
 
-      await logForwarder.consumerHandler({ subject: '/blob.json' }, mockContext);
+      await logForwarder.consumerHandler(
+        { subject: '/blob.json' },
+        mockContext
+      );
 
       expect(mockContext.log).toHaveBeenCalledWith(
         expect.stringContaining('1 skipped')

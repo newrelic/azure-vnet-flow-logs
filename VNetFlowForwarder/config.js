@@ -6,7 +6,10 @@
  * Centralized environment variable access and defaults.
  */
 
-const _parseInt = (val, def) => { const n = parseInt(val, 10); return Number.isNaN(n) ? def : n; };
+const _parseInt = (val, def) => {
+  const n = parseInt(val, 10);
+  return Number.isNaN(n) ? def : n;
+};
 
 const config = {
   // New Relic
@@ -33,7 +36,7 @@ const config = {
   cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
 
   // Poison event protection
-  maxConsecutiveFailures: _parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 3),
+  maxConsecutiveFailures: _parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 5),
 
   // Limits
   maxPayloadSize: 1000 * 1024, // ~1 MB compressed
@@ -83,7 +86,9 @@ config.validate = function () {
     );
   }
   if (!this.eventhubName) {
-    throw new Error('Missing EVENTHUB_NAME app setting. This value is deployment-managed and must be present at runtime.');
+    throw new Error(
+      'Missing EVENTHUB_NAME app setting. This value is deployment-managed and must be present at runtime.'
+    );
   }
   try {
     new URL(this.nrEndpoint);
