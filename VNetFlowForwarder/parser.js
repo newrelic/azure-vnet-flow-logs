@@ -38,7 +38,8 @@
  * }
  *
  * Flow Tuple CSV format (VNet Flow Logs):
- *   0: Timestamp (Unix epoch seconds)
+ *   0: Timestamp. VNet Flow Logs (v4) emit Unix epoch MILLISECONDS (13-digit);
+ *      legacy NSG flow logs emit Unix epoch SECONDS (10-digit). See parseFlowTuple.
  *   1: Source IP
  *   2: Destination IP
  *   3: Source Port
@@ -246,8 +247,16 @@ function parseFlowTuple(tuple) {
   const fields = tuple.split(',');
   const ts = parseInt(fields[0], 10);
   const timestampParseFallback = Number.isNaN(ts);
+  // New Relic expects `timestamp` in epoch milliseconds. VNet Flow Logs (v4)
+  // already emit epoch ms (13-digit, e.g. 1782658803422); legacy NSG flow logs
+  // emit epoch seconds (10-digit). Promote seconds->ms; leave ms untouched.
+  // Threshold 1e11 sits safely between any realistic seconds and ms value.
   const record = {
-    timestamp: timestampParseFallback ? Date.now() : ts * 1000, // Convert to epoch ms
+    timestamp: timestampParseFallback
+      ? Date.now()
+      : ts < 1e11
+        ? ts * 1000
+        : ts,
     srcAddr: fields[1] || '',
     destAddr: fields[2] || '',
     srcPort: parseInt(fields[3], 10) || 0,

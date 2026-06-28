@@ -56,6 +56,23 @@ describe('Parser', () => {
 
       nowSpy.mockRestore();
     });
+
+    it('should keep a VNet v4 millisecond timestamp (13-digit) as-is', () => {
+      // Real VNet Flow Logs v4 tuples carry epoch milliseconds.
+      const tuple = '1782658803422,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,1,64,1,64';
+      const result = parser.parseFlowTuple(tuple);
+
+      expect(result.timestamp).toBe(1782658803422);
+      expect(result.timestampParseFallback).toBeUndefined();
+    });
+
+    it('should promote a legacy NSG second timestamp (10-digit) to ms', () => {
+      // Legacy NSG flow logs carry epoch seconds; must be promoted to ms.
+      const tuple = '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C';
+      const result = parser.parseFlowTuple(tuple);
+
+      expect(result.timestamp).toBe(1699990055000);
+    });
   });
 
   describe('parseRawDelta', () => {
