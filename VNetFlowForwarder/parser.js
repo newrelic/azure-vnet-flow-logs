@@ -78,6 +78,12 @@ const STATE_MAP = {
   E: 'End',
 };
 
+// Boundary used to tell epoch-seconds timestamps from epoch-milliseconds ones.
+// 1e11 (~year 5138 in seconds, ~Mar 1973 in ms) sits safely between any
+// realistic 10-digit seconds value and 13-digit milliseconds value: anything
+// below it is treated as seconds and promoted to ms; anything above is ms.
+const EPOCH_MS_THRESHOLD = 1e11;
+
 /**
  * Parse a raw delta string from the PT1H.json blob into an array of records.
  *
@@ -250,11 +256,10 @@ function parseFlowTuple(tuple) {
   // New Relic expects `timestamp` in epoch milliseconds. VNet Flow Logs (v4)
   // already emit epoch ms (13-digit, e.g. 1782658803422); legacy NSG flow logs
   // emit epoch seconds (10-digit). Promote seconds->ms; leave ms untouched.
-  // Threshold 1e11 sits safely between any realistic seconds and ms value.
   const record = {
     timestamp: timestampParseFallback
       ? Date.now()
-      : ts < 1e11
+      : ts < EPOCH_MS_THRESHOLD
         ? ts * 1000
         : ts,
     srcAddr: fields[1] || '',

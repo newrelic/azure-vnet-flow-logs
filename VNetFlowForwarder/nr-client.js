@@ -28,8 +28,25 @@ const RETRYABLE_NETWORK_ERROR_CODES = new Set([
 // Reuse TCP connections across requests within the same function invocation
 const httpsAgent = new https.Agent({ keepAlive: true });
 
+// Dedicated axios instance so our interceptor and retry policy don't leak onto
+// the global axios singleton shared by the rest of the process.
+const nrClient = axios.create();
+
+// Resolve the transport adapter from global axios at call time instead of
+// snapshotting it at create(). Only our interceptor and retry policy need to be
+// scoped to this instance; the transport stays shared (and stubbable in tests).
+nrClient.defaults.adapter = (requestConfig) =>
+  axios.getAdapter(axios.defaults.adapter)(requestConfig);
+
+// Cap response-body text included in error messages to avoid unbounded growth.
+function truncateBody(body) {
+  if (body === null || body === undefined) return '';
+  const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+  return bodyStr.slice(0, 4096);
+}
+
 // Convert non-202 responses into errors before axios-retry evaluates retry rules.
-axios.interceptors.response.use((response) => {
+nrClient.interceptors.response.use((response) => {
   const requiresAcceptedStatus =
     response?.config?.metadata?.requiresAcceptedStatus === true;
   if (requiresAcceptedStatus && response.status !== 202) {
@@ -44,7 +61,7 @@ axios.interceptors.response.use((response) => {
 });
 
 // Install retry interceptor once; per-request retry policy is configured in request options.
-axiosRetry(axios);
+axiosRetry(nrClient);
 
 /**
  * Build the New Relic payload envelope.
@@ -159,7 +176,7 @@ async function compressAndSend(logEntries, context) {
  */
 async function httpSend(compressedData, context) {
   try {
-    await axios.post(config.nrEndpoint, compressedData, {
+    await nrClient.post(config.nrEndpoint, compressedData, {
       httpsAgent,
       responseType: 'text',
       validateStatus: () => true,
@@ -197,28 +214,35 @@ async function httpSend(compressedData, context) {
 }
 
 function normalizeAxiosError(error) {
+  // axios-retry hands the same error to retryCondition, retryDelay, and onRetry.
+  // Normalize once and cache on the error so each callback reuses the result.
+  if (error && error.__nrNormalized) {
+    return error.__nrNormalized;
+  }
+
   const statusCode = error?.response?.status;
   const responseHeaders = error?.response?.headers || {};
   const responseBody = truncateBody(error?.response?.data);
 
+  let normalized;
   if (typeof statusCode === 'number') {
-    const err = new Error(`NR API returned ${statusCode}: ${responseBody}`);
-    err.statusCode = statusCode;
-    err.responseBody = responseBody;
-    err.retryAfter =
+    normalized = new Error(`NR API returned ${statusCode}: ${responseBody}`);
+    normalized.statusCode = statusCode;
+    normalized.responseBody = responseBody;
+    normalized.retryAfter =
       responseHeaders['retry-after'] || responseHeaders['Retry-After'];
-    return err;
+  } else {
+    normalized = new Error(error?.message || 'NR API request failed');
+    normalized.code = error?.code;
   }
 
-  const err = new Error(error?.message || 'NR API request failed');
-  err.code = error?.code;
-  return err;
-}
-
-function truncateBody(body) {
-  if (body === null || body === undefined) return '';
-  const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
-  return bodyStr.slice(0, 4096);
+  if (error && typeof error === 'object') {
+    Object.defineProperty(error, '__nrNormalized', {
+      value: normalized,
+      enumerable: false,
+    });
+  }
+  return normalized;
 }
 
 function isRetryableError(err) {
