@@ -12,12 +12,7 @@ param sourceStorageAccountName string = ''
 @description('Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group.')
 param location string = ''
 
-@description('Optional. The Logs API endpoint for your New Relic account region. Select US (default), EU, or JP endpoint.')
-@allowed([
-  'https://log-api.newrelic.com/log/v1'
-  'https://log-api.eu.newrelic.com/log/v1'
-  'https://log-api.jp.nr-data.net/log/v1'
-])
+@description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you\'re in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you\'re in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
 @description('Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network).')
@@ -29,8 +24,15 @@ param maxRetries int = 3
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
 
-@description('Optional. Enable debug logging for troubleshooting.')
-param debugEnabled bool = false
+@description('Optional. Default log level for the Function App host. Maps to host.json logging.logLevel.default via the AzureFunctionsJobHost__logging__logLevel__default app setting.')
+@allowed([
+  'Trace'
+  'Debug'
+  'Information'
+  'Warning'
+  'Error'
+])
+param functionLogLevel string = 'Information'
 
 @description('Optional. Number of hours to retain blob-cursor records before the cleanup job removes them.')
 @minValue(1)
@@ -41,7 +43,7 @@ param cursorCleanupSchedule string = '0 0 3 * * *'
 
 @description('Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event.')
 @minValue(1)
-param maxConsecutiveFailures int = 3
+param maxConsecutiveFailures int = 5
 
 @description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
 @minValue(1)
@@ -133,6 +135,25 @@ var flexConsumptionASP = {
   sku: {
     tier: 'FlexConsumption'
     name: 'FC1'
+  }
+}
+
+// Fails the deployment at parameter-validation time when neither newRelicLicenseKey nor newRelicInsertKey is provided.
+// The inner template declares a required parameter that the outer template never passes, so ARM rejects the inner deployment.
+resource validateNewRelicKey 'Microsoft.Resources/deployments@2022-09-01' = if (empty(newRelicLicenseKey) && empty(newRelicInsertKey)) {
+  name: 'ERROR-Provide-either-newRelicLicenseKey-or-newRelicInsertKey'
+  properties: {
+    mode: 'Incremental'
+    template: {
+      '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#'
+      contentVersion: '1.0.0.0'
+      parameters: {
+        atLeastOneNewRelicKeyRequired: {
+          type: 'string'
+        }
+      }
+      resources: []
+    }
   }
 }
 
@@ -387,12 +408,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: string(retryInterval)
         }
         {
-          name: 'DEBUG_ENABLED'
-          value: string(debugEnabled)
-        }
-        {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
+        }
+        {
+          name: 'AzureFunctionsJobHost__logging__logLevel__default'
+          value: functionLogLevel
         }
       ]
       ftpsState: 'Disabled'
