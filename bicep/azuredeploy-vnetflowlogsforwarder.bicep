@@ -2,13 +2,13 @@
 @secure()
 param newRelicIngestLicenseKey string
 
-@description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account whose name starts with nrvnetflsrc.')
+@description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
 param flowLogsStorageAccountName string = ''
 
 @description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you are in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you are in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
-@description('Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network).')
+@description('Optional. Custom tags to attach to every log sent to New Relic. Format: semicolon-separated key:value pairs (e.g. env:prod;team:network).')
 param newRelicTags string = ''
 
 @description('Optional. Maximum number of retries when sending logs to New Relic.')
@@ -17,7 +17,7 @@ param maxRetries int = 3
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
 
-@description('Optional. Default log level for the Function App host. Maps to host.json logging.logLevel.default via the AzureFunctionsJobHost__logging__logLevel__default app setting.')
+@description('Optional. Default log level for the forwarder.')
 @allowed([
   'Trace'
   'Debug'
@@ -34,7 +34,7 @@ param functionLogLevel string = 'Information'
 ])
 param eventHubScalingMode string = 'Basic'
 
-@description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The flow logs storage account is not modified and is expected to have public network access enabled.')
+@description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
