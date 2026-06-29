@@ -2,10 +2,10 @@
 @secure()
 param newRelicLicenseKey string
 
-@description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
+@description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account whose name starts with nrvnetflsrc.')
 param flowLogsStorageAccountName string = ''
 
-@description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you\'re in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you\'re in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
+@description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you are in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you are in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
 @description('Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network).')
@@ -27,7 +27,7 @@ param retryInterval int = 2000
 ])
 param functionLogLevel string = 'Information'
 
-@description('Optional. Event Hub scaling profile. \'Basic\' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). \'Enterprise\' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
+@description('Optional. Event Hub scaling profile. Basic uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). Enterprise enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
 @allowed([
   'Basic'
   'Enterprise'
