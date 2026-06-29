@@ -1,10 +1,6 @@
-@description('Optional. New Relic License Key (modern ingest key). Provide either this or newRelicInsertKey; one of the two is required.')
+@description('Required. New Relic License Key (ingest key).')
 @secure()
-param newRelicLicenseKey string = ''
-
-@description('Optional. Legacy New Relic Insert Key (for older accounts). Provide either this or newRelicLicenseKey; one of the two is required.')
-@secure()
-param newRelicInsertKey string = ''
+param newRelicLicenseKey string
 
 @description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
 param sourceStorageAccountName string = ''
@@ -111,25 +107,6 @@ var flexConsumptionASP = {
   sku: {
     tier: 'FlexConsumption'
     name: 'FC1'
-  }
-}
-
-// Fails the deployment at parameter-validation time when neither newRelicLicenseKey nor newRelicInsertKey is provided.
-// The inner template declares a required parameter that the outer template never passes, so ARM rejects the inner deployment.
-resource validateNewRelicKey 'Microsoft.Resources/deployments@2022-09-01' = if (empty(newRelicLicenseKey) && empty(newRelicInsertKey)) {
-  name: 'ERROR-Provide-either-newRelicLicenseKey-or-newRelicInsertKey'
-  properties: {
-    mode: 'Incremental'
-    template: {
-      '$schema': 'https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#'
-      contentVersion: '1.0.0.0'
-      parameters: {
-        atLeastOneNewRelicKeyRequired: {
-          type: 'string'
-        }
-      }
-      resources: []
-    }
   }
 }
 
@@ -362,10 +339,6 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'NR_LICENSE_KEY'
           value: newRelicLicenseKey
-        }
-        {
-          name: 'NR_INSERT_KEY'
-          value: newRelicInsertKey
         }
         {
           name: 'NR_ENDPOINT'
