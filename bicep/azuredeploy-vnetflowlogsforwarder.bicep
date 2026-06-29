@@ -5,9 +5,6 @@ param newRelicLicenseKey string
 @description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
 param flowLogsStorageAccountName string = ''
 
-@description('Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group.')
-param location string = ''
-
 @description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you\'re in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you\'re in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
@@ -41,7 +38,7 @@ param eventHubScalingMode string = 'Basic'
 param disablePublicAccessToStorageAccount bool = false
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
-var effectiveLocation = (empty(location) ? resourceGroup().location : location)
+var effectiveLocation = resourceGroup().location
 var createNewFlowLogsStorage = empty(flowLogsStorageAccountName)
 var resolvedFlowLogsStorageName = (createNewFlowLogsStorage
   ? 'nrvnetflsrc${uniqueResourceNameSuffix}'

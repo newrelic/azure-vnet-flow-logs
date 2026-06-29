@@ -15,13 +15,6 @@
                 "description": "Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with 'nrvnetflsrc')."
             }
         },
-        "location": {
-            "type": "string",
-            "defaultValue": "",
-            "metadata": {
-                "description": "Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group."
-            }
-        },
         "newRelicEndpoint": {
             "type": "string",
             "defaultValue": "https://log-api.newrelic.com/log/v1",
@@ -82,7 +75,7 @@
     },
     "variables": {
         "uniqueResourceNameSuffix": "[uniqueString(resourceGroup().id)]",
-        "location": "[if(empty(parameters('location')), resourceGroup().location, parameters('location'))]",
+        "location": "[resourceGroup().location]",
 
         "createNewFlowLogsStorage": "[empty(parameters('flowLogsStorageAccountName'))]",
         "flowLogsStorageAccountNameResolved": "[if(variables('createNewFlowLogsStorage'), concat('nrvnetflsrc', variables('uniqueResourceNameSuffix')), parameters('flowLogsStorageAccountName'))]",
