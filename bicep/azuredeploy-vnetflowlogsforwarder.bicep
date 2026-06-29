@@ -67,9 +67,9 @@ param eventHubScalingMode string = 'Basic'
 @minValue(1)
 param maxEventBatchSize int = 100
 
-@description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 20.')
+@description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5.')
 @minValue(1)
-param minEventBatchSize int = 20
+param minEventBatchSize int = 5
 
 @description('Optional. Maximum amount of time to wait to build up a batch before invoking the function, in HH:MM:SS format. Default is 00:00:30.')
 param maxWaitTime string = '00:00:30'

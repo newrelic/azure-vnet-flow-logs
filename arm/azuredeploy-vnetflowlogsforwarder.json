@@ -128,10 +128,10 @@
         },
         "minEventBatchSize": {
             "type": "int",
-            "defaultValue": 1,
+            "defaultValue": 5,
             "minValue": 1,
             "metadata": {
-                "description": "Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 1."
+                "description": "Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5."
             }
         },
         "maxWaitTime": {
