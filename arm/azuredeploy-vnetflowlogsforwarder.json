@@ -72,23 +72,6 @@
                 "description": "Optional. Default log level for the Function App host. Maps to host.json logging.logLevel.default via the AzureFunctionsJobHost__logging__logLevel__default app setting."
             }
         },
-        "maximumInstanceCount": {
-            "type": "int",
-            "defaultValue": 100,
-            "minValue": 1,
-            "maxValue": 1000,
-            "metadata": {
-                "description": "Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000."
-            }
-        },
-        "instanceMemoryMB": {
-            "type": "int",
-            "defaultValue": 2048,
-            "allowedValues": [ 512, 2048, 4096 ],
-            "metadata": {
-                "description": "Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096."
-            }
-        },
         "eventHubScalingMode": {
             "type": "string",
             "allowedValues": [ "Basic", "Enterprise" ],
@@ -413,8 +396,8 @@
                         }
                     },
                     "scaleAndConcurrency": {
-                        "maximumInstanceCount": "[parameters('maximumInstanceCount')]",
-                        "instanceMemoryMB": "[parameters('instanceMemoryMB')]"
+                        "maximumInstanceCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 32, 4)]",
+                        "instanceMemoryMB": 2048
                     },
                     "runtime": {
                         "name": "node",

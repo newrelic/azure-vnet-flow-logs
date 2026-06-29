@@ -34,19 +34,6 @@ param retryInterval int = 2000
 ])
 param functionLogLevel string = 'Information'
 
-@description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
-@minValue(1)
-@maxValue(1000)
-param maximumInstanceCount int = 100
-
-@description('Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096.')
-@allowed([
-  512
-  2048
-  4096
-])
-param instanceMemoryMB int = 2048
-
 @description('Optional. Event Hub scaling profile. \'Basic\' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). \'Enterprise\' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
 @allowed([
   'Basic'
@@ -326,8 +313,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: maximumInstanceCount
-        instanceMemoryMB: instanceMemoryMB
+        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
+        instanceMemoryMB: 2048
       }
       runtime: {
         name: 'node'
