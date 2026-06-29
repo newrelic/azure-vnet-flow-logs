@@ -3,7 +3,7 @@
 param newRelicLicenseKey string
 
 @description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
-param sourceStorageAccountName string = ''
+param flowLogsStorageAccountName string = ''
 
 @description('Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group.')
 param location string = ''
@@ -37,15 +37,15 @@ param functionLogLevel string = 'Information'
 ])
 param eventHubScalingMode string = 'Basic'
 
-@description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
+@description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The flow logs storage account is not modified and is expected to have public network access enabled.')
 param disablePublicAccessToStorageAccount bool = false
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = (empty(location) ? resourceGroup().location : location)
-var createNewSourceStorage = empty(sourceStorageAccountName)
-var resolvedSourceStorageName = (createNewSourceStorage
+var createNewFlowLogsStorage = empty(flowLogsStorageAccountName)
+var resolvedFlowLogsStorageName = (createNewFlowLogsStorage
   ? 'nrvnetflsrc${uniqueResourceNameSuffix}'
-  : sourceStorageAccountName)
+  : flowLogsStorageAccountName)
 var eventHubNamespaceName = 'nrvnetflowlogs-eventhub-namespace-${uniqueResourceNameSuffix}'
 var resolvedEventHubName = 'nrvnetflowlogs-eventhub'
 var eventHubConsumerGroupName = 'nrvnetflowlogs-consumergroup'
@@ -71,7 +71,7 @@ var eventHubsDataSenderRoleId = subscriptionResourceId(
   '2b629674-e913-4c01-ae53-ef4638d8f975'
 )
 var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
-var sourceStorageAccountId = sourceStorageAccountNameResolved.id
+var flowLogsStorageAccountId = flowLogsStorageAccountNameResolved.id
 
 var virtualNetworkName = 'nrvnetflowlogs-vnet-${uniqueResourceNameSuffix}'
 var functionsSubnetName = 'functions-subnet'
@@ -110,8 +110,8 @@ var flexConsumptionASP = {
   }
 }
 
-resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewSourceStorage) {
-  name: resolvedSourceStorageName
+resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewFlowLogsStorage) {
+  name: resolvedFlowLogsStorageName
   location: effectiveLocation
   sku: {
     name: 'Standard_LRS'
@@ -186,7 +186,7 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    source: sourceStorageAccountId
+    source: flowLogsStorageAccountId
     topicType: 'Microsoft.Storage.StorageAccounts'
   }
 }
@@ -318,7 +318,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'SOURCE_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_STORAGE_CONNECTION'

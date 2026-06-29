@@ -8,7 +8,7 @@
                 "description": "Required. New Relic License Key (ingest key)."
             }
         },
-        "sourceStorageAccountName": {
+        "flowLogsStorageAccountName": {
             "type": "string",
             "defaultValue": "",
             "metadata": {
@@ -76,7 +76,7 @@
             "type": "bool",
             "defaultValue": false,
             "metadata": {
-                "description": "Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled."
+                "description": "Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The flow logs storage account is not modified and is expected to have public network access enabled."
             }
         }
     },
@@ -84,8 +84,8 @@
         "uniqueResourceNameSuffix": "[uniqueString(resourceGroup().id)]",
         "location": "[if(empty(parameters('location')), resourceGroup().location, parameters('location'))]",
 
-        "createNewSourceStorage": "[empty(parameters('sourceStorageAccountName'))]",
-        "sourceStorageAccountNameResolved": "[if(variables('createNewSourceStorage'), concat('nrvnetflsrc', variables('uniqueResourceNameSuffix')), parameters('sourceStorageAccountName'))]",
+        "createNewFlowLogsStorage": "[empty(parameters('flowLogsStorageAccountName'))]",
+        "flowLogsStorageAccountNameResolved": "[if(variables('createNewFlowLogsStorage'), concat('nrvnetflsrc', variables('uniqueResourceNameSuffix')), parameters('flowLogsStorageAccountName'))]",
 
         "eventHubNamespaceName": "[concat('nrvnetflowlogs-eventhub-namespace-', variables('uniqueResourceNameSuffix'))]",
         "eventHubName": "nrvnetflowlogs-eventhub",
@@ -138,7 +138,7 @@
         "functionStorageTablePrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-table-pe')]",
         "functionAppPrivateEndpointName": "[concat(variables('functionAppName'), '-sites-pe')]",
 
-        "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
+        "flowLogsStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
 
         "flexConsumptionASP": {
             "kind": "functionapp,linux",
@@ -155,8 +155,8 @@
         {
             "type": "Microsoft.Storage/storageAccounts",
             "apiVersion": "2023-05-01",
-            "name": "[variables('sourceStorageAccountNameResolved')]",
-            "condition": "[variables('createNewSourceStorage')]",
+            "name": "[variables('flowLogsStorageAccountNameResolved')]",
+            "condition": "[variables('createNewFlowLogsStorage')]",
             "location": "[variables('location')]",
             "sku": {
                 "name": "Standard_LRS"
@@ -242,10 +242,10 @@
                 "type": "SystemAssigned"
             },
             "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]"
             ],
             "properties": {
-                "source": "[variables('sourceStorageAccountId')]",
+                "source": "[variables('flowLogsStorageAccountId')]",
                 "topicType": "Microsoft.Storage.StorageAccounts"
             }
         },
@@ -396,7 +396,7 @@
                         },
                         {
                             "name": "SOURCE_STORAGE_CONNECTION",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('sourceStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
                         },
                         {
                             "name": "CURSOR_STORAGE_CONNECTION",
