@@ -65,8 +65,14 @@ describe('Cursor', () => {
         })
       );
       expect(mockClient.deleteEntity).toHaveBeenCalledTimes(2);
-      expect(mockClient.deleteEntity).toHaveBeenCalledWith('vnetflowlogs', 'rk1');
-      expect(mockClient.deleteEntity).toHaveBeenCalledWith('vnetflowlogs', 'rk2');
+      expect(mockClient.deleteEntity).toHaveBeenCalledWith(
+        'vnetflowlogs',
+        'rk1'
+      );
+      expect(mockClient.deleteEntity).toHaveBeenCalledWith(
+        'vnetflowlogs',
+        'rk2'
+      );
     });
 
     it('should count delete errors without failing the cleanup run', async () => {

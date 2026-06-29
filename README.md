@@ -66,6 +66,9 @@ az deployment group create \
 | `newRelicTags` | No | Custom tags for logs (e.g., `env:prod;team:network`) |
 | `maxRetries` | No | Max retries for NR delivery (default: 3) |
 | `retryInterval` | No | Retry interval in ms (default: 2000) |
+| `maxEventBatchSize` | No | Max Event Grid blob-created notifications per function invocation (blobs-per-invocation, not log events). Overrides `host.json`. (default: 100) |
+| `minEventBatchSize` | No | Min Event Grid blob-created notifications per function invocation. Overrides `host.json`. (default: 20) |
+| `maxWaitTime` | No | Max time to build up a batch before invoking the function, in `HH:MM:SS`. Overrides `host.json`. (default: 00:00:30) |
 | `debugEnabled` | No | Deprecated. Use logger level configuration in `host.json` / app settings to control debug output. |
 | `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
 

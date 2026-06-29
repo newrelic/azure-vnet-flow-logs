@@ -59,7 +59,8 @@ describe('Parser', () => {
 
     it('should keep a VNet v4 millisecond timestamp (13-digit) as-is', () => {
       // Real VNet Flow Logs v4 tuples carry epoch milliseconds.
-      const tuple = '1782658803422,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,1,64,1,64';
+      const tuple =
+        '1782658803422,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,1,64,1,64';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1782658803422);
@@ -112,7 +113,9 @@ describe('Parser', () => {
       expect(result[0].category).toBe('FlowLogFlowEvent');
       expect(result[0].flowLogVersion).toBe(4);
       expect(result[0].flowRecords.flows).toHaveLength(1);
-      expect(result[0].flowRecords.flows[0].flowGroups[0].flowTuples).toHaveLength(1);
+      expect(
+        result[0].flowRecords.flows[0].flowGroups[0].flowTuples
+      ).toHaveLength(1);
     });
 
     it('should parse a JSON fragment (appended blocks)', () => {

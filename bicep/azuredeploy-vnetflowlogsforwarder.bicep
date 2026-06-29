@@ -63,6 +63,17 @@ param instanceMemoryMB int = 2048
 ])
 param eventHubScalingMode string = 'Basic'
 
+@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 100.')
+@minValue(1)
+param maxEventBatchSize int = 100
+
+@description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 20.')
+@minValue(1)
+param minEventBatchSize int = 20
+
+@description('Optional. Maximum amount of time to wait to build up a batch before invoking the function, in HH:MM:SS format. Default is 00:00:30.')
+param maxWaitTime string = '00:00:30'
+
 @description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
 param disablePublicAccessToStorageAccount bool = false
 
@@ -393,6 +404,18 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize'
+          value: string(maxEventBatchSize)
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__minEventBatchSize'
+          value: string(minEventBatchSize)
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
+          value: maxWaitTime
         }
       ]
       ftpsState: 'Disabled'

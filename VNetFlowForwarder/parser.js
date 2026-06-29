@@ -260,8 +260,8 @@ function parseFlowTuple(tuple) {
     timestamp: timestampParseFallback
       ? Date.now()
       : ts < EPOCH_MS_THRESHOLD
-        ? ts * 1000
-        : ts,
+      ? ts * 1000
+      : ts,
     srcAddr: fields[1] || '',
     destAddr: fields[2] || '',
     srcPort: parseInt(fields[3], 10) || 0,

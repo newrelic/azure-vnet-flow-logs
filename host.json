@@ -18,8 +18,8 @@
             "initialOffsetOptions": {
                 "type": "fromEnd"
             },
-            "maxEventBatchSize": 10,
-            "minEventBatchSize": 1,
+            "maxEventBatchSize": 100,
+            "minEventBatchSize": 20,
             "maxWaitTime": "00:00:30"
         }
     }
