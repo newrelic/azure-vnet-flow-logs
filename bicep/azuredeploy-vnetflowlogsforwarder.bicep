@@ -1,6 +1,6 @@
-@description('Required. New Relic License Key (ingest key).')
+@description('Required. New Relic Ingest License Key.')
 @secure()
-param newRelicLicenseKey string
+param newRelicIngestLicenseKey string
 
 @description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account whose name starts with nrvnetflsrc.')
 param flowLogsStorageAccountName string = ''
@@ -335,7 +335,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'NR_LICENSE_KEY'
-          value: newRelicLicenseKey
+          value: newRelicIngestLicenseKey
         }
         {
           name: 'NR_ENDPOINT'

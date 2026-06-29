@@ -2,10 +2,10 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "newRelicLicenseKey": {
+        "newRelicIngestLicenseKey": {
             "type": "securestring",
             "metadata": {
-                "description": "Required. New Relic License Key (ingest key)."
+                "description": "Required. New Relic Ingest License Key."
             }
         },
         "flowLogsStorageAccountName": {
@@ -409,7 +409,7 @@
                         },
                         {
                             "name": "NR_LICENSE_KEY",
-                            "value": "[parameters('newRelicLicenseKey')]"
+                            "value": "[parameters('newRelicIngestLicenseKey')]"
                         },
                         {
                             "name": "NR_ENDPOINT",
