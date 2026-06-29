@@ -34,17 +34,6 @@ param retryInterval int = 2000
 ])
 param functionLogLevel string = 'Information'
 
-@description('Optional. Number of hours to retain blob-cursor records before the cleanup job removes them.')
-@minValue(1)
-param cursorRetentionHours int = 48
-
-@description('Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC).')
-param cursorCleanupSchedule string = '0 0 3 * * *'
-
-@description('Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event.')
-@minValue(1)
-param maxConsecutiveFailures int = 5
-
 @description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
 @minValue(1)
 @maxValue(1000)
@@ -373,15 +362,15 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'CURSOR_RETENTION_HOURS'
-          value: string(cursorRetentionHours)
+          value: '48'
         }
         {
           name: 'CURSOR_CLEANUP_SCHEDULE'
-          value: cursorCleanupSchedule
+          value: '0 0 3 * * *'
         }
         {
           name: 'MAX_CONSECUTIVE_FAILURES'
-          value: string(maxConsecutiveFailures)
+          value: '5'
         }
         {
           name: 'NR_LICENSE_KEY'

@@ -72,29 +72,6 @@
                 "description": "Optional. Default log level for the Function App host. Maps to host.json logging.logLevel.default via the AzureFunctionsJobHost__logging__logLevel__default app setting."
             }
         },
-        "cursorRetentionHours": {
-            "type": "int",
-            "defaultValue": 48,
-            "minValue": 1,
-            "metadata": {
-                "description": "Optional. Number of hours to retain blob-cursor records before the cleanup job removes them."
-            }
-        },
-        "cursorCleanupSchedule": {
-            "type": "string",
-            "defaultValue": "0 0 3 * * *",
-            "metadata": {
-                "description": "Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC)."
-            }
-        },
-        "maxConsecutiveFailures": {
-            "type": "int",
-            "defaultValue": 5,
-            "minValue": 1,
-            "metadata": {
-                "description": "Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event."
-            }
-        },
         "maximumInstanceCount": {
             "type": "int",
             "defaultValue": 100,
@@ -472,15 +449,15 @@
                         },
                         {
                             "name": "CURSOR_RETENTION_HOURS",
-                            "value": "[string(parameters('cursorRetentionHours'))]"
+                            "value": "48"
                         },
                         {
                             "name": "CURSOR_CLEANUP_SCHEDULE",
-                            "value": "[parameters('cursorCleanupSchedule')]"
+                            "value": "0 0 3 * * *"
                         },
                         {
                             "name": "MAX_CONSECUTIVE_FAILURES",
-                            "value": "[string(parameters('maxConsecutiveFailures'))]"
+                            "value": "5"
                         },
                         {
                             "name": "NR_LICENSE_KEY",
