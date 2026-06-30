@@ -41,6 +41,17 @@ param functionLogLevel string = 'Information'
 ])
 param eventHubScalingMode string = 'Basic'
 
+@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 100.')
+@minValue(1)
+param maxEventBatchSize int = 100
+
+@description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5.')
+@minValue(1)
+param minEventBatchSize int = 5
+
+@description('Optional. Maximum amount of time to wait to build up a batch before invoking the function, in HH:MM:SS format. Default is 00:00:30.')
+param maxWaitTime string = '00:00:30'
+
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
@@ -367,6 +378,18 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'AzureFunctionsJobHost__logging__logLevel__default'
           value: functionLogLevel
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize'
+          value: string(maxEventBatchSize)
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__minEventBatchSize'
+          value: string(minEventBatchSize)
+        }
+        {
+          name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
+          value: maxWaitTime
         }
       ]
       ftpsState: 'Disabled'
