@@ -5,7 +5,13 @@ param newRelicIngestLicenseKey string
 @description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
 param flowLogsStorageAccountName string = ''
 
-@description('Optional. The Logs API endpoint used to send your logs to. By default, it is https://log-api.newrelic.com/log/v1 if your account is in the United States (US) region. Otherwise, if you are in the European Union (EU) region, you should use https://log-api.eu.newrelic.com/log/v1, or if you are in the Japan (JP) region, you should use https://log-api.jp.nr-data.net/log/v1.')
+@description('Optional. The Logs API endpoint for your New Relic account region.')
+@allowed([
+  'https://log-api.newrelic.com/log/v1'
+  'https://log-api.eu.newrelic.com/log/v1'
+  'https://log-api.jp.nr-data.net/log/v1'
+  'https://gov-log-api.newrelic.com/log/v1'
+])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
 @description('Optional. Custom tags to attach to every log sent to New Relic. Format: semicolon-separated key:value pairs (e.g. env:prod;team:network).')
