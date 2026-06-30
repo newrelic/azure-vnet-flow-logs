@@ -10,6 +10,21 @@
 const { BlobServiceClient } = require('@azure/storage-blob');
 const config = require('./config');
 
+// Azure VNet Flow Logs writes a trailing "terminator" block to keep the JSON
+// well-formed across appends. Its block ID is always "Z" followed by 32 zeros,
+// which Azure returns base64-encoded. The terminator sits at the end of the
+// committed block list and stays there forever — new data blocks are inserted
+// before it. Tracking the terminator's name as the cursor would make every
+// subsequent run conclude "we've already processed the last block" and silently
+// skip all new data appended in between. We therefore identify and skip it.
+const TERMINATOR_BLOCK_NAME_B64 = Buffer.from(
+  'Z00000000000000000000000000000000'
+).toString('base64');
+
+function isTerminatorBlock(blockName) {
+  return blockName === TERMINATOR_BLOCK_NAME_B64;
+}
+
 let blobServiceClient = null;
 
 /**
@@ -97,6 +112,17 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
     return null;
   }
 
+  // Index of the last DATA block — the terminator (if present) doesn't count
+  // as data. We use this as the "caught up" boundary and as the cursor target.
+  let lastDataIndex = blocks.length - 1;
+  if (isTerminatorBlock(blocks[lastDataIndex].name)) {
+    lastDataIndex--;
+  }
+  if (lastDataIndex < 0) {
+    // Blob contains only the terminator — no data to process yet
+    return null;
+  }
+
   // Determine the starting index for new blocks
   let startIndex = 0;
   if (lastBlockId !== null) {
@@ -104,8 +130,9 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
     if (cursorIndex === -1) {
       // Last block ID not found — blob was likely recreated; reprocess from start
       startIndex = 0;
-    } else if (cursorIndex === blocks.length - 1) {
-      // Already processed up to the last block — no new data
+    } else if (cursorIndex >= lastDataIndex) {
+      // Already processed up to the last DATA block — no new data to send.
+      // (cursorIndex > lastDataIndex would be unusual but is also "caught up".)
       return null;
     } else {
       startIndex = cursorIndex + 1;
@@ -118,7 +145,8 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
     offset += blocks[i].size;
   }
 
-  // Calculate size of new blocks
+  // Calculate size of new blocks — includes the terminator block (if any)
+  // so the parser sees the closing "]}" and can trim it cleanly.
   let newSize = 0;
   for (let i = startIndex; i < blocks.length; i++) {
     newSize += blocks[i].size;
@@ -134,7 +162,8 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
 
   return {
     data,
-    lastBlockId: blocks[blocks.length - 1].name,
+    // Cursor advances to the last DATA block — never the terminator.
+    lastBlockId: blocks[lastDataIndex].name,
   };
 }
 
