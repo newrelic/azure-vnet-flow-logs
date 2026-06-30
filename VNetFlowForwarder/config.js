@@ -14,7 +14,6 @@ const _parseInt = (val, def) => {
 const config = {
   // New Relic
   nrLicenseKey: process.env.NR_LICENSE_KEY || '',
-  nrInsertKey: process.env.NR_INSERT_KEY || '',
   nrEndpoint: process.env.NR_ENDPOINT || 'https://log-api.newrelic.com/log/v1',
   nrTags: process.env.NR_TAGS || '',
   nrMaxRetries: _parseInt(process.env.NR_MAX_RETRIES, 3),
@@ -50,14 +49,14 @@ const config = {
  * Returns the API key to use for New Relic authentication.
  */
 config.getApiKey = function () {
-  return this.nrLicenseKey || this.nrInsertKey;
+  return this.nrLicenseKey;
 };
 
 /**
  * Returns the header name for the configured key type.
  */
 config.getApiKeyHeader = function () {
-  return this.nrLicenseKey ? 'X-License-Key' : 'X-Insert-Key';
+  return 'X-License-Key';
 };
 
 /**
@@ -65,9 +64,9 @@ config.getApiKeyHeader = function () {
  * Throws if required runtime app settings are missing.
  */
 config.validate = function () {
-  if (!this.nrLicenseKey && !this.nrInsertKey) {
+  if (!this.nrLicenseKey) {
     throw new Error(
-      'Missing NR_LICENSE_KEY or NR_INSERT_KEY app setting. Configure at least one runtime key.'
+      'Missing NR_LICENSE_KEY app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
   if (!this.sourceStorageConnection) {
