@@ -194,14 +194,6 @@ async function processEvent(event, context, cursorData) {
   // Step 5: Transform records into NR log entries
   const pathMetadata = parser.extractMetadataFromPath(blobName);
   const logEntries = parser.transformRecords(records, pathMetadata);
-  const invalidTimestampCount = logEntries.filter(
-    (entry) => entry.attributes?.timestampParseFallback
-  ).length;
-  if (invalidTimestampCount > 0) {
-    context.warn(
-      `Consumer: ${invalidTimestampCount} flow tuples had invalid timestamps for ${blobPath}; fallback ingest-time timestamps were used.`
-    );
-  }
 
   logDebug(
     context,

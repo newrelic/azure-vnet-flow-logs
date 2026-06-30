@@ -12,6 +12,36 @@ const config = require('./config');
 
 let blobServiceClient = null;
 
+// Flow-log blobs end with a constant trailing "closer" block ("]}"). New data
+// is appended before it, so the cursor must track the last data block, not the
+// closer — which would otherwise always look like the latest processed block.
+const CLOSER_BLOCK_ID_PATTERN = /^Z0*$/;
+
+function isCloserBlock(block) {
+  try {
+    const decoded = Buffer.from(block.name, 'base64').toString('latin1');
+    return CLOSER_BLOCK_ID_PATTERN.test(decoded);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Index of the last data block (the cursor frontier), skipping the trailing
+ * closer block. Falls back to the last block if none look like data blocks.
+ *
+ * @param {Array<{name: string}>} blocks
+ * @returns {number}
+ */
+function lastDataBlockIndex(blocks) {
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    if (!isCloserBlock(blocks[i])) {
+      return i;
+    }
+  }
+  return blocks.length - 1;
+}
+
 /**
  * Get or create the Blob Service client (lazy singleton).
  */
@@ -97,28 +127,27 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
     return null;
   }
 
-  // Determine the starting index for new blocks
+  const frontierIndex = lastDataBlockIndex(blocks);
+
   let startIndex = 0;
   if (lastBlockId !== null) {
     const cursorIndex = blocks.findIndex((b) => b.name === lastBlockId);
     if (cursorIndex === -1) {
-      // Last block ID not found — blob was likely recreated; reprocess from start
+      // Cursor block gone — blob was recreated; reprocess from the start.
       startIndex = 0;
-    } else if (cursorIndex === blocks.length - 1) {
-      // Already processed up to the last block — no new data
+    } else if (cursorIndex >= frontierIndex) {
+      // No new data blocks since the cursor.
       return null;
     } else {
       startIndex = cursorIndex + 1;
     }
   }
 
-  // Calculate byte offset: sum of sizes of already-processed blocks
   let offset = 0;
   for (let i = 0; i < startIndex; i++) {
     offset += blocks[i].size;
   }
 
-  // Calculate size of new blocks
   let newSize = 0;
   for (let i = startIndex; i < blocks.length; i++) {
     newSize += blocks[i].size;
@@ -134,7 +163,7 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
 
   return {
     data,
-    lastBlockId: blocks[blocks.length - 1].name,
+    lastBlockId: blocks[frontierIndex].name,
   };
 }
 

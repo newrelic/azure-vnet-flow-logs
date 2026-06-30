@@ -45,14 +45,12 @@ describe('Parser', () => {
       expect(result.packetsSrcToDest).toBeUndefined();
     });
 
-    it('should flag timestamp fallback when tuple timestamp is invalid', () => {
+    it('should fall back to ingest time when the tuple timestamp is invalid', () => {
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
       const tuple = 'not-a-timestamp,10.0.0.4,10.0.0.5,12345,443,6,O,A,E';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1700000000000);
-      expect(result.timestampParseFallback).toBe(true);
-      expect(result.rawTimestampField).toBe('not-a-timestamp');
 
       nowSpy.mockRestore();
     });
@@ -64,7 +62,6 @@ describe('Parser', () => {
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1782658803422);
-      expect(result.timestampParseFallback).toBeUndefined();
     });
 
     it('should promote a legacy NSG second timestamp (10-digit) to ms', () => {
