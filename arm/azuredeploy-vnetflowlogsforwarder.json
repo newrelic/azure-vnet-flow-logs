@@ -118,6 +118,29 @@
                 "description": "Optional. Event Hub scaling profile. 'Basic' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). 'Enterprise' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment."
             }
         },
+        "maxEventBatchSize": {
+            "type": "int",
+            "defaultValue": 10,
+            "minValue": 1,
+            "metadata": {
+                "description": "Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 10."
+            }
+        },
+        "minEventBatchSize": {
+            "type": "int",
+            "defaultValue": 5,
+            "minValue": 1,
+            "metadata": {
+                "description": "Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5."
+            }
+        },
+        "maxWaitTime": {
+            "type": "string",
+            "defaultValue": "00:00:30",
+            "metadata": {
+                "description": "Optional. Maximum amount of time to wait to build up a batch before invoking the function, in HH:MM:SS format. Default is 00:00:30."
+            }
+        },
         "disablePublicAccessToStorageAccount": {
             "type": "bool",
             "defaultValue": false,
@@ -491,6 +514,18 @@
                         {
                             "name": "FUNCTIONS_EXTENSION_VERSION",
                             "value": "~4"
+                        },
+                        {
+                            "name": "AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize",
+                            "value": "[string(parameters('maxEventBatchSize'))]"
+                        },
+                        {
+                            "name": "AzureFunctionsJobHost__extensions__eventHubs__minEventBatchSize",
+                            "value": "[string(parameters('minEventBatchSize'))]"
+                        },
+                        {
+                            "name": "AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime",
+                            "value": "[parameters('maxWaitTime')]"
                         }
                     ],
                     "ftpsState": "Disabled"
