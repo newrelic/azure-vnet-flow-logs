@@ -4,6 +4,7 @@
     "parameters": {
         "newRelicIngestLicenseKey": {
             "type": "securestring",
+            "minLength": 1,
             "metadata": {
                 "description": "Required. New Relic Ingest License Key."
             }

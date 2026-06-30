@@ -1,5 +1,6 @@
 @description('Required. New Relic Ingest License Key.')
 @secure()
+@minLength(1)
 param newRelicIngestLicenseKey string
 
 @description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
