@@ -4,7 +4,7 @@
   "description": "Azure Function to collect and forward VNet Flow Logs from Azure Event Hubs to New Relic.",
   "main": "VNetFlowForwarder/index.js",
   "scripts": {
-    "lint": "eslint ./**/*.js",
+    "lint": "eslint VNetFlowForwarder __tests__",
     "package": "npm ci --omit=dev && zip -r VNetFlowForwarder.zip VNetFlowForwarder/ host.json package.json node_modules/",
     "test": "jest"
   },
@@ -26,20 +26,21 @@
   },
   "homepage": "https://github.com/newrelic/azure-vnet-flow-logs#readme",
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.2",
-    "@semantic-release/commit-analyzer": "^9.0.2",
-    "@semantic-release/exec": "^6.0.3",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.1.0",
     "@semantic-release/git": "^10.0.1",
-    "@semantic-release/github": "^8.0.7",
-    "@semantic-release/npm": "^9.0.1",
-    "@semantic-release/release-notes-generator": "^10.0.3",
+    "@semantic-release/github": "^12.0.8",
+    "@semantic-release/npm": "^13.1.5",
+    "@semantic-release/release-notes-generator": "^14.1.1",
     "eslint": "^8.29.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",
     "jest": "^29.7.0",
     "prettier": "2.8.1",
-    "semantic-release-plugin-update-version-in-files": "^1.1.0",
-    "uuid": "^9.0.1",
+    "semantic-release": "^25.0.5",
+    "semantic-release-plugin-update-version-in-files": "^2.1.0",
+    "uuid": "^11.1.1",
     "winston": "^3.13.0"
   },
   "dependencies": {
@@ -48,7 +49,7 @@
     "@azure/functions": "^4.11.2",
     "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.31.0",
-    "axios": "^1.6.8",
+    "axios": "^1.18.1",
     "axios-retry": "^4.1.0"
   }
 }
