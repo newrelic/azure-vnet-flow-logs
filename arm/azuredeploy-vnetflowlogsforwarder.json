@@ -217,6 +217,7 @@
             },
             "properties": {
                 "minimumTlsVersion": "1.2",
+                "publicNetworkAccess": "[if(parameters('disablePublicAccessToStorageAccount'), 'Disabled', 'Enabled')]",
                 "isAutoInflateEnabled": "[equals(parameters('eventHubScalingMode'), 'Enterprise')]",
                 "maximumThroughputUnits": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 40, 0)]"
             }
@@ -989,8 +990,8 @@
                 "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
             ],
             "properties": {
-                "publicNetworkAccess": "Enabled",
-                "defaultAction": "Allow",
+                "publicNetworkAccess": "Disabled",
+                "defaultAction": "Deny",
                 "trustedServiceAccessEnabled": true
             }
         },

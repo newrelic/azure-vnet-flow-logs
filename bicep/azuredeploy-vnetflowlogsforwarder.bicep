@@ -163,6 +163,7 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
   }
   properties: {
     minimumTlsVersion: '1.2'
+    publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     isAutoInflateEnabled: (eventHubScalingMode == 'Enterprise')
     maximumThroughputUnits: (eventHubScalingMode == 'Enterprise' ? 40 : 0)
   }
@@ -819,14 +820,17 @@ resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/
   }
 }
 
-// Explicit Allow rule set so Azure's PE-attach flow doesn't implicitly try to flip the namespace
-// to a Deny rule set (which then fails validation: Deny + zero IP/VNet rules is rejected).
+// Truly-private EH: publicNetworkAccess=Disabled at both the namespace-level (above) and
+// the ruleset. defaultAction=Deny + trustedServiceAccessEnabled=true keeps Event Grid
+// delivery working via the trusted-services bypass while blocking every non-Azure caller.
+// Note: the private endpoint attached later in this template satisfies Azure's requirement
+// of "at least one connectivity path" alongside Deny.
 resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2021-11-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubNamespace_resource
   name: 'default'
   properties: {
-    publicNetworkAccess: 'Enabled'
-    defaultAction: 'Allow'
+    publicNetworkAccess: 'Disabled'
+    defaultAction: 'Deny'
     trustedServiceAccessEnabled: true
   }
 }
