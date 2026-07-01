@@ -59,8 +59,6 @@
  * expressed as flow state "D", and field 8 instead carries flow encryption.
  */
 
-const config = require('./config');
-
 const PROTOCOL_MAP = {
   6: 'TCP',
   17: 'UDP',
@@ -199,42 +197,6 @@ function parseLineByLine(text) {
  */
 function extractMetadataFromPath(blobPath) {
   const metadata = {};
-  const lower = blobPath.toLowerCase();
-
-  // Extract subscription ID
-  const subMatch = lower.match(/subscriptions\/([^/]+)/);
-  if (subMatch) metadata.subscriptionId = subMatch[1];
-
-  // Extract resource group
-  const rgMatch = lower.match(/resourcegroups\/([^/]+)/);
-  if (rgMatch) metadata.resourceGroup = rgMatch[1];
-
-  // Extract resource type and name (e.g., virtualNetworks/myVnet or networkSecurityGroups/myNsg)
-  const providerMatch = blobPath.match(
-    /PROVIDERS\/MICROSOFT\.NETWORK\/([^/]+)\/([^/]+)/i
-  );
-  if (providerMatch) {
-    metadata.resourceType = providerMatch[1];
-    metadata.resourceName = providerMatch[2];
-  }
-
-  // VNet flow log path format: flowLogResourceID=/{SUB}_{RG}/{NETWORKWATCHER_REGION_NAME}/...
-  // Guard against ReDoS by only processing reasonably-sized paths and bounding repetitions
-  if (!metadata.subscriptionId || !metadata.resourceGroup) {
-    if (blobPath.length < 2048) {
-      const vnetFlowMatch = blobPath.match(
-        /flowLogResourceID=\/([^_/]{1,64})_([^/]{1,128})\/([^/]{1,256})/i
-      );
-      if (vnetFlowMatch) {
-        if (!metadata.subscriptionId) {
-          metadata.subscriptionId = vnetFlowMatch[1].toLowerCase();
-        }
-        if (!metadata.resourceGroup) {
-          metadata.resourceGroup = vnetFlowMatch[2].toLowerCase();
-        }
-      }
-    }
-  }
 
   // Extract MAC address
   const macMatch = blobPath.match(/macAddress=([^/]+)/i);
@@ -296,9 +258,7 @@ function parseFlowTuple(tuple) {
  * Parse Azure network target resource context from targetResourceID.
  *
  * Example IDs:
- * - /subscriptions/.../providers/Microsoft.Network/virtualNetworks/{vnet}
  * - /subscriptions/.../providers/Microsoft.Network/virtualNetworks/{vnet}/subnets/{subnet}
- * - /subscriptions/.../providers/Microsoft.Network/networkInterfaces/{nic}
  *
  * @param {string} targetResourceID - Azure target resource ID
  * @returns {Object} Parsed resource context
@@ -329,14 +289,8 @@ function parseTargetResourceContext(targetResourceID) {
 
   const context = {};
 
-  if (nameByType.virtualnetworks) {
-    context.virtualNetworkName = nameByType.virtualnetworks;
-  }
   if (nameByType.subnets) {
     context.subnetName = nameByType.subnets;
-  }
-  if (nameByType.networkinterfaces) {
-    context.networkInterfaceName = nameByType.networkinterfaces;
   }
 
   return context;
@@ -353,43 +307,11 @@ function transformRecords(records, pathMetadata) {
   const logEntries = [];
 
   for (const record of records) {
-    // Use targetResourceID from record to fill missing path metadata
-    // targetResourceID represents the actual VNet resource, so prefer it over
-    // blob path metadata (which may point to NetworkWatcherRG instead of the VNet's RG)
-    const enriched = { ...pathMetadata };
-    if (record.targetResourceID) {
-      const targetContext = parseTargetResourceContext(record.targetResourceID);
-
-      const targetMatch = record.targetResourceID.match(
-        /providers\/Microsoft\.Network\/([^/]+)\/([^/]+)/i
-      );
-      if (targetMatch) {
-        if (!enriched.resourceType) enriched.resourceType = targetMatch[1];
-        if (!enriched.resourceName) enriched.resourceName = targetMatch[2];
-      }
-      // Always prefer targetResourceID for subscriptionId and resourceGroup
-      // since the blob path may reference the NetworkWatcher RG, not the VNet's RG
-      const subMatch = record.targetResourceID.match(/subscriptions\/([^/]+)/i);
-      if (subMatch) enriched.subscriptionId = subMatch[1].toLowerCase();
-      const rgMatch = record.targetResourceID.match(/resourceGroups\/([^/]+)/i);
-      if (rgMatch) enriched.resourceGroup = rgMatch[1];
-
-      if (targetContext.virtualNetworkName) {
-        enriched.virtualNetworkName = targetContext.virtualNetworkName;
-      }
-      if (targetContext.subnetName) {
-        enriched.subnetName = targetContext.subnetName;
-      }
-      if (targetContext.networkInterfaceName) {
-        enriched.networkInterfaceName = targetContext.networkInterfaceName;
-      }
-    }
+    const targetContext = record.targetResourceID
+      ? parseTargetResourceContext(record.targetResourceID)
+      : {};
 
     const baseAttrs = {
-      subscriptionId: enriched.subscriptionId || '',
-      resourceGroup: enriched.resourceGroup || '',
-      resourceType: enriched.resourceType || '',
-      resourceName: enriched.resourceName || '',
       macAddress: pathMetadata.macAddress || record.macAddress || '',
       category: record.category || 'FlowLogFlowEvent',
       operationName: record.operationName || '',
@@ -397,9 +319,7 @@ function transformRecords(records, pathMetadata) {
       flowLogGUID: record.flowLogGUID || '',
       flowLogResourceID: record.flowLogResourceID || '',
       targetResourceID: record.targetResourceID || '',
-      virtualNetworkName: enriched.virtualNetworkName || '',
-      subnetName: enriched.subnetName || '',
-      networkInterfaceName: enriched.networkInterfaceName || '',
+      subnetName: targetContext.subnetName || '',
     };
 
     // Extract flow tuples from nested structure

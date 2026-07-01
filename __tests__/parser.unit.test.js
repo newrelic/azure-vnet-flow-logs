@@ -158,15 +158,11 @@ describe('Parser', () => {
   });
 
   describe('extractMetadataFromPath', () => {
-    it('should extract all metadata from a VNet flow log path', () => {
+    it('should extract mac address and date from a VNet flow log path', () => {
       const path =
         'resourceId=/SUBSCRIPTIONS/sub-123/RESOURCEGROUPS/rg-prod/PROVIDERS/MICROSOFT.NETWORK/VIRTUALNETWORKS/myVnet/y=2024/m=03/d=15/h=10/m=00/macAddress=AABBCCDDEEFF/PT1H.json';
       const meta = parser.extractMetadataFromPath(path);
 
-      expect(meta.subscriptionId).toBe('sub-123');
-      expect(meta.resourceGroup).toBe('rg-prod');
-      expect(meta.resourceType).toBe('VIRTUALNETWORKS');
-      expect(meta.resourceName).toBe('myVnet');
       expect(meta.macAddress).toBe('AABBCCDDEEFF');
       expect(meta.year).toBe('2024');
       expect(meta.month).toBe('03');
@@ -174,48 +170,35 @@ describe('Parser', () => {
       expect(meta.hour).toBe('10');
     });
 
-    it('should handle NSG flow log path', () => {
-      const path =
-        'resourceId=/SUBSCRIPTIONS/abc/RESOURCEGROUPS/rg1/PROVIDERS/MICROSOFT.NETWORK/NETWORKSECURITYGROUPS/myNsg/y=2024/m=01/d=01/h=00/m=00/macAddress=001122334455/PT1H.json';
-      const meta = parser.extractMetadataFromPath(path);
-
-      expect(meta.resourceType).toBe('NETWORKSECURITYGROUPS');
-      expect(meta.resourceName).toBe('myNsg');
-    });
-
-    it('should extract subscription and resource group from VNet flowLogResourceID format', () => {
+    it('should extract mac address from VNet flowLogResourceID format', () => {
       const path =
         'flowLogResourceID=/9C99D7C5-7653-4B53-AE61-DAEFF13D8569_BPAVAN-E2E-VNETFLOW-STAGING-BATCH1/NETWORKWATCHER_CENTRALINDIA_FLOWLOG/y=2024/m=01/d=01/h=00/m=00/macAddress=001122334455/PT1H.json';
       const meta = parser.extractMetadataFromPath(path);
 
-      expect(meta.subscriptionId).toBe('9c99d7c5-7653-4b53-ae61-daeff13d8569');
-      expect(meta.resourceGroup).toBe('bpavan-e2e-vnetflow-staging-batch1');
       expect(meta.macAddress).toBe('001122334455');
     });
 
     it('should handle partial paths gracefully', () => {
       const meta = parser.extractMetadataFromPath('some/random/path.json');
-      expect(meta.subscriptionId).toBeUndefined();
       expect(meta.macAddress).toBeUndefined();
+      expect(meta.year).toBeUndefined();
     });
   });
 
   describe('parseTargetResourceContext', () => {
-    it('should parse VNet target resource context', () => {
+    it('should return empty context when no subnet segment is present', () => {
       const context = parser.parseTargetResourceContext(
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet'
       );
 
-      expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBeUndefined();
     });
 
-    it('should parse subnet target resource context', () => {
+    it('should parse subnet name from a subnet target resource context', () => {
       const context = parser.parseTargetResourceContext(
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/my-subnet'
       );
 
-      expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBe('my-subnet');
     });
   });
@@ -250,8 +233,7 @@ describe('Parser', () => {
           },
         },
       ];
-      const meta = { subscriptionId: 'sub-1', resourceGroup: 'rg-1' };
-      const entries = parser.transformRecords(records, meta);
+      const entries = parser.transformRecords(records, {});
 
       expect(entries).toHaveLength(2);
       expect(entries[0].timestamp).toBe(1699990055000);
@@ -267,7 +249,12 @@ describe('Parser', () => {
       expect(entries[0].attributes.bytesSrcToDest).toBe(1500);
       expect(entries[0].attributes.packetsDestToSrc).toBe(8);
       expect(entries[0].attributes.bytesDestToSrc).toBe(1200);
-      expect(entries[0].attributes.subscriptionId).toBe('sub-1');
+      expect(entries[0].attributes.subscriptionId).toBeUndefined();
+      expect(entries[0].attributes.resourceGroup).toBeUndefined();
+      expect(entries[0].attributes.resourceType).toBeUndefined();
+      expect(entries[0].attributes.resourceName).toBeUndefined();
+      expect(entries[0].attributes.virtualNetworkName).toBeUndefined();
+      expect(entries[0].attributes.networkInterfaceName).toBeUndefined();
 
       expect(entries[1].timestamp).toBe(1699990060000);
       expect(entries[1].attributes.srcAddr).toBe('10.0.0.4');
@@ -297,7 +284,7 @@ describe('Parser', () => {
       expect(entries[0].timestamp).toBe(Date.parse('2024-01-01T00:00:00Z'));
     });
 
-    it('should enrich entries with VNet and subnet names from targetResourceID', () => {
+    it('should enrich entries with subnet name from targetResourceID', () => {
       const records = [
         {
           time: '2024-01-01T00:00:00Z',
@@ -326,11 +313,14 @@ describe('Parser', () => {
       const entries = parser.transformRecords(records, {});
 
       expect(entries).toHaveLength(1);
-      expect(entries[0].attributes.targetResourceType).toBeUndefined();
-      expect(entries[0].attributes.virtualNetworkName).toBe('my-vnet');
       expect(entries[0].attributes.subnetName).toBe('my-subnet');
-      expect(entries[0].attributes.resourceType).toBe('virtualNetworks');
-      expect(entries[0].attributes.resourceName).toBe('my-vnet');
+      expect(entries[0].attributes.subscriptionId).toBeUndefined();
+      expect(entries[0].attributes.resourceGroup).toBeUndefined();
+      expect(entries[0].attributes.resourceType).toBeUndefined();
+      expect(entries[0].attributes.resourceName).toBeUndefined();
+      expect(entries[0].attributes.targetResourceType).toBeUndefined();
+      expect(entries[0].attributes.virtualNetworkName).toBeUndefined();
+      expect(entries[0].attributes.networkInterfaceName).toBeUndefined();
     });
   });
 });
