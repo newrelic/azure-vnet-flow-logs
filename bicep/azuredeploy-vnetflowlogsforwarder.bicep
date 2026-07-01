@@ -163,6 +163,7 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
   }
   properties: {
     minimumTlsVersion: '1.2'
+    publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     isAutoInflateEnabled: (eventHubScalingMode == 'Enterprise')
     maximumThroughputUnits: (eventHubScalingMode == 'Enterprise' ? 40 : 0)
   }
@@ -819,14 +820,12 @@ resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/
   }
 }
 
-// Explicit Allow rule set so Azure's PE-attach flow doesn't implicitly try to flip the namespace
-// to a Deny rule set (which then fails validation: Deny + zero IP/VNet rules is rejected).
 resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2021-11-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubNamespace_resource
   name: 'default'
   properties: {
-    publicNetworkAccess: 'Enabled'
-    defaultAction: 'Allow'
+    publicNetworkAccess: 'Disabled'
+    defaultAction: 'Deny'
     trustedServiceAccessEnabled: true
   }
 }
