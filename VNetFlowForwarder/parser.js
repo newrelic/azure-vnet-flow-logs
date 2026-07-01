@@ -245,6 +245,11 @@ function parseFlowTuple(tuple) {
       : ts < EPOCH_MS_THRESHOLD
       ? ts * 1000
       : ts,
+    // Internal-only flag: true when the tuple timestamp was unparseable and an
+    // ingest-time fallback was used. Consumed by transformRecords to emit an
+    // operator warning; intentionally NOT copied into a log entry's attributes,
+    // so it is never sent to New Relic.
+    timestampParseFallback,
     srcAddr: fields[1] || '',
     destAddr: fields[2] || '',
     srcPort: parseInt(fields[3], 10) || 0,
@@ -302,6 +307,10 @@ function parseTargetResourceContext(targetResourceID) {
 
   const context = {};
 
+  if (nameByType.virtualnetworks) {
+    context.virtualNetworkName = nameByType.virtualnetworks;
+  }
+
   if (nameByType.subnets) {
     context.subnetName = nameByType.subnets;
   }
@@ -314,10 +323,15 @@ function parseTargetResourceContext(targetResourceID) {
  *
  * @param {Array<Object>} records - Parsed JSON records from PT1H.json
  * @param {Object} pathMetadata - Metadata extracted from blob path
- * @returns {Array<Object>} Array of NR log entry objects
+ * @returns {{logEntries: Array<Object>, fallbackCount: number}}
+ *   logEntries: NR log entry objects to send.
+ *   fallbackCount: number of tuples whose timestamp was unparseable and used an
+ *     ingest-time fallback. Surfaced for operator logging only — it is not
+ *     attached to any log entry, so it is never sent to New Relic.
  */
 function transformRecords(records, pathMetadata) {
   const logEntries = [];
+  let fallbackCount = 0;
 
   for (const record of records) {
     const targetContext = record.targetResourceID
@@ -332,6 +346,7 @@ function transformRecords(records, pathMetadata) {
       flowLogGUID: record.flowLogGUID || '',
       flowLogResourceID: record.flowLogResourceID || '',
       targetResourceID: record.targetResourceID || '',
+      virtualNetworkName: targetContext.virtualNetworkName || '',
       subnetName: targetContext.subnetName || '',
     };
 
@@ -351,6 +366,7 @@ function transformRecords(records, pathMetadata) {
         for (const tuple of tuples) {
           recordHasTuples = true;
           const parsed = parseFlowTuple(tuple);
+          if (parsed.timestampParseFallback) fallbackCount++;
           logEntries.push({
             timestamp: parsed.timestamp,
             message: tuple,
@@ -386,7 +402,7 @@ function transformRecords(records, pathMetadata) {
     }
   }
 
-  return logEntries;
+  return { logEntries, fallbackCount };
 }
 
 module.exports = {

@@ -186,19 +186,21 @@ describe('Parser', () => {
   });
 
   describe('parseTargetResourceContext', () => {
-    it('should return empty context when no subnet segment is present', () => {
+    it('should parse the virtual network name when no subnet segment is present', () => {
       const context = parser.parseTargetResourceContext(
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet'
       );
 
+      expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBeUndefined();
     });
 
-    it('should parse subnet name from a subnet target resource context', () => {
+    it('should parse virtual network and subnet name from a subnet target resource context', () => {
       const context = parser.parseTargetResourceContext(
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/my-subnet'
       );
 
+      expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBe('my-subnet');
     });
   });
@@ -233,7 +235,7 @@ describe('Parser', () => {
           },
         },
       ];
-      const entries = parser.transformRecords(records, {});
+      const { logEntries: entries } = parser.transformRecords(records, {});
 
       expect(entries).toHaveLength(2);
       expect(entries[0].timestamp).toBe(1699990055000);
@@ -253,7 +255,8 @@ describe('Parser', () => {
       expect(entries[0].attributes.resourceGroup).toBeUndefined();
       expect(entries[0].attributes.resourceType).toBeUndefined();
       expect(entries[0].attributes.resourceName).toBeUndefined();
-      expect(entries[0].attributes.virtualNetworkName).toBeUndefined();
+      // targetResourceID has no virtualNetworks segment -> empty string
+      expect(entries[0].attributes.virtualNetworkName).toBe('');
       expect(entries[0].attributes.networkInterfaceName).toBeUndefined();
 
       expect(entries[1].timestamp).toBe(1699990060000);
@@ -279,7 +282,7 @@ describe('Parser', () => {
           flowRecords: { flows: [] },
         },
       ];
-      const entries = parser.transformRecords(records, {});
+      const { logEntries: entries } = parser.transformRecords(records, {});
       expect(entries).toHaveLength(1);
       expect(entries[0].timestamp).toBe(Date.parse('2024-01-01T00:00:00Z'));
     });
@@ -310,17 +313,56 @@ describe('Parser', () => {
         },
       ];
 
-      const entries = parser.transformRecords(records, {});
+      const { logEntries: entries } = parser.transformRecords(records, {});
 
       expect(entries).toHaveLength(1);
       expect(entries[0].attributes.subnetName).toBe('my-subnet');
+      expect(entries[0].attributes.virtualNetworkName).toBe('my-vnet');
       expect(entries[0].attributes.subscriptionId).toBeUndefined();
       expect(entries[0].attributes.resourceGroup).toBeUndefined();
       expect(entries[0].attributes.resourceType).toBeUndefined();
-      expect(entries[0].attributes.resourceName).toBeUndefined();
       expect(entries[0].attributes.targetResourceType).toBeUndefined();
-      expect(entries[0].attributes.virtualNetworkName).toBeUndefined();
       expect(entries[0].attributes.networkInterfaceName).toBeUndefined();
+    });
+
+    it('counts invalid-timestamp fallbacks without leaking the flag to New Relic', () => {
+      const records = [
+        {
+          time: '2024-01-01T00:00:00Z',
+          category: 'FlowLogFlowEvent',
+          flowRecords: {
+            flows: [
+              {
+                aclID: 'acl-1',
+                flowGroups: [
+                  {
+                    rule: 'AllowAll',
+                    flowTuples: [
+                      // valid timestamp
+                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,10,1500,8,1200',
+                      // unparseable timestamp -> ingest-time fallback
+                      'notatimestamp,10.0.0.4,10.0.0.6,12346,80,6,O,B,X,1,100,0,0',
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      ];
+
+      const { logEntries, fallbackCount } = parser.transformRecords(
+        records,
+        {}
+      );
+
+      expect(logEntries).toHaveLength(2);
+      expect(fallbackCount).toBe(1);
+      // The fallback flag is internal-only and must never reach New Relic.
+      for (const entry of logEntries) {
+        expect(entry.timestampParseFallback).toBeUndefined();
+        expect(entry.attributes.timestampParseFallback).toBeUndefined();
+      }
     });
   });
 });
