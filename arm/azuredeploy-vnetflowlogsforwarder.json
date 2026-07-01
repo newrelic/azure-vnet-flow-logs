@@ -9,6 +9,17 @@
                 "description": "Required. New Relic Ingest License Key."
             }
         },
+        "authenticationMode": {
+            "type": "string",
+            "defaultValue": "Managed Identity",
+            "allowedValues": [
+                "Local Authentication",
+                "Managed Identity"
+            ],
+            "metadata": {
+                "description": "Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use 'Managed Identity' (default) for keyless authentication using the function's system-assigned identity, or 'Local Authentication' to connect via shared-key connection strings."
+            }
+        },
         "flowLogsStorageAccountName": {
             "type": "string",
             "defaultValue": "",
@@ -99,17 +110,6 @@
             "defaultValue": false,
             "metadata": {
                 "description": "Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible."
-            }
-        },
-        "authenticationMode": {
-            "type": "string",
-            "defaultValue": "Local Authentication",
-            "allowedValues": [
-                "Local Authentication",
-                "Managed Identity"
-            ],
-            "metadata": {
-                "description": "Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use 'Local Authentication' (default) to connect via shared-key connection strings, or 'Managed Identity' for keyless authentication using the function's system-assigned identity."
             }
         }
     },

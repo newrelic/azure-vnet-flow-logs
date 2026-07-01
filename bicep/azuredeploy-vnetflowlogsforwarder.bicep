@@ -3,6 +3,13 @@
 @minLength(1)
 param newRelicIngestLicenseKey string
 
+@description('Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use \'Managed Identity\' (default) for keyless authentication using the function\'s system-assigned identity, or \'Local Authentication\' to connect via shared-key connection strings.')
+@allowed([
+  'Local Authentication'
+  'Managed Identity'
+])
+param authenticationMode string = 'Managed Identity'
+
 @description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
 param flowLogsStorageAccountName string = ''
 
@@ -53,13 +60,6 @@ param maxWaitTime string = '00:00:30'
 
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
-
-@description('Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use \'Local Authentication\' (default) to connect via shared-key connection strings, or \'Managed Identity\' for keyless authentication using the function\'s system-assigned identity.')
-@allowed([
-  'Local Authentication'
-  'Managed Identity'
-])
-param authenticationMode string = 'Local Authentication'
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = resourceGroup().location
