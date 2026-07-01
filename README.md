@@ -238,8 +238,8 @@ Each flow log record sent to New Relic includes:
 | `srcPort` / `destPort` | Source and destination ports |
 | `protocol` | TCP, UDP, or ICMP |
 | `direction` | Inbound or Outbound |
-| `action` | Allowed or Denied |
-| `state` | Begin, Continuing, or End |
+| `flowState` | Begin, Continuing, End, or Deny (VNet flow logs have no separate Allow/Deny field — a blocked flow is `Deny`) |
+| `encryption` | Encrypted, Not Encrypted, or an `NX_*` reason code |
 | `packetsSrcToDest` / `packetsDestToSrc` | Packet counts |
 | `bytesSrcToDest` / `bytesDestToSrc` | Byte counts |
 | `subscriptionId` | Azure subscription ID |

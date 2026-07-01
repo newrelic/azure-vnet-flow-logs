@@ -26,7 +26,7 @@
  *               {
  *                 "rule": "...",
  *                 "flowTuples": [
- *                   "1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,1,100,1,80"
+ *                   "1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,1,100,1,80"
  *                 ]
  *               }
  *             ]
@@ -37,7 +37,7 @@
  *   ]
  * }
  *
- * Flow Tuple CSV format (VNet Flow Logs):
+ * Flow Tuple CSV format (VNet Flow Logs v4):
  *   0: Timestamp. VNet Flow Logs (v4) emit Unix epoch MILLISECONDS (13-digit);
  *      legacy NSG flow logs emit Unix epoch SECONDS (10-digit). See parseFlowTuple.
  *   1: Source IP
@@ -45,13 +45,18 @@
  *   3: Source Port
  *   4: Destination Port
  *   5: Protocol (6=TCP, 17=UDP, 1=ICMP)
- *   6: Direction (I=Inbound, O=Outbound)
- *   7: Action (A=Allowed, D=Denied)
- *   8: State (B=Begin, C=Continuing, E=End)
+ *   6: Flow direction (I=Inbound, O=Outbound)
+ *   7: Flow state (B=Begin, C=Continuing, E=End, D=Deny)
+ *   8: Flow encryption (X=Encrypted, NX=Not Encrypted, NX_*=unencrypted reason)
  *   9: Packets (source to destination)
  *   10: Bytes (source to destination)
  *   11: Packets (destination to source)
  *   12: Bytes (destination to source)
+ *
+ * NOTE: VNet Flow Logs differ from legacy NSG flow logs at fields 7 and 8.
+ * NSG logs put the Allow/Deny decision at field 7 and the flow state at
+ * field 8. VNet logs have NO separate Allow/Deny field: a denied flow is
+ * expressed as flow state "D", and field 8 instead carries flow encryption.
  */
 
 const config = require('./config');
@@ -67,15 +72,21 @@ const DIRECTION_MAP = {
   O: 'Outbound',
 };
 
-const ACTION_MAP = {
-  A: 'Allowed',
-  D: 'Denied',
-};
-
-const STATE_MAP = {
+// Field 7 in VNet Flow Logs. A denied flow is expressed here as "D" — there is
+// no separate Allow/Deny field (unlike legacy NSG flow logs).
+const FLOW_STATE_MAP = {
   B: 'Begin',
   C: 'Continuing',
   E: 'End',
+  D: 'Deny',
+};
+
+// Field 8 in VNet Flow Logs. "X" = encrypted, "NX" = not encrypted. Azure may
+// also emit detailed NX_* reason codes (e.g. NX_HW_NOT_SUPPORTED); those pass
+// through unmapped via the raw-value fallback in parseFlowTuple.
+const ENCRYPTION_MAP = {
+  X: 'Encrypted',
+  NX: 'Not Encrypted',
 };
 
 // Boundary used to tell epoch-seconds timestamps from epoch-milliseconds ones.
@@ -268,8 +279,8 @@ function parseFlowTuple(tuple) {
     destPort: parseInt(fields[4], 10) || 0,
     protocol: PROTOCOL_MAP[fields[5]] || fields[5] || '',
     direction: DIRECTION_MAP[fields[6]] || fields[6] || '',
-    action: ACTION_MAP[fields[7]] || fields[7] || '',
-    state: STATE_MAP[fields[8]] || fields[8] || '',
+    flowState: FLOW_STATE_MAP[fields[7]] || fields[7] || '',
+    encryption: ENCRYPTION_MAP[fields[8]] || fields[8] || '',
   };
 
   // Packet/byte counts (may not be present in all versions)
@@ -428,8 +439,8 @@ function transformRecords(records, pathMetadata) {
               destPort: parsed.destPort,
               protocol: parsed.protocol,
               direction: parsed.direction,
-              action: parsed.action,
-              state: parsed.state,
+              flowState: parsed.flowState,
+              encryption: parsed.encryption,
               packetsSrcToDest: parsed.packetsSrcToDest,
               bytesSrcToDest: parsed.bytesSrcToDest,
               packetsDestToSrc: parsed.packetsDestToSrc,
@@ -460,7 +471,7 @@ module.exports = {
   transformRecords,
   PROTOCOL_MAP,
   DIRECTION_MAP,
-  ACTION_MAP,
-  STATE_MAP,
+  FLOW_STATE_MAP,
+  ENCRYPTION_MAP,
   parseTargetResourceContext,
 };

@@ -7,8 +7,9 @@ const parser = require('../VNetFlowForwarder/parser');
 describe('Parser', () => {
   describe('parseFlowTuple', () => {
     it('should parse a complete flow tuple CSV', () => {
+      // Real VNet Flow Logs v4 tuple: field 7 = flow state, field 8 = encryption.
       const tuple =
-        '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,10,1500,8,1200';
+        '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,10,1500,8,1200';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1699990055000);
@@ -18,36 +19,47 @@ describe('Parser', () => {
       expect(result.destPort).toBe(443);
       expect(result.protocol).toBe('TCP');
       expect(result.direction).toBe('Outbound');
-      expect(result.action).toBe('Allowed');
-      expect(result.state).toBe('Continuing');
+      expect(result.flowState).toBe('Continuing');
+      expect(result.encryption).toBe('Not Encrypted');
       expect(result.packetsSrcToDest).toBe(10);
       expect(result.bytesSrcToDest).toBe(1500);
       expect(result.packetsDestToSrc).toBe(8);
       expect(result.bytesDestToSrc).toBe(1200);
     });
 
-    it('should handle UDP inbound denied', () => {
-      const tuple = '1699990100,192.168.1.1,10.0.0.1,8080,53,17,I,D,B,1,64,0,0';
+    it('should map a denied flow state and encrypted flow', () => {
+      // VNet flow logs express a blocked flow as flow state "D" (Deny).
+      const tuple = '1699990100,192.168.1.1,10.0.0.1,8080,53,17,I,D,X,1,64,0,0';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.protocol).toBe('UDP');
       expect(result.direction).toBe('Inbound');
-      expect(result.action).toBe('Denied');
-      expect(result.state).toBe('Begin');
+      expect(result.flowState).toBe('Deny');
+      expect(result.encryption).toBe('Encrypted');
+    });
+
+    it('should pass through an unmapped NX_* encryption reason code', () => {
+      const tuple =
+        '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,B,NX_HW_NOT_SUPPORTED,1,64,0,0';
+      const result = parser.parseFlowTuple(tuple);
+
+      expect(result.flowState).toBe('Begin');
+      expect(result.encryption).toBe('NX_HW_NOT_SUPPORTED');
     });
 
     it('should handle tuple with missing optional fields', () => {
-      const tuple = '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,E';
+      const tuple = '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,E,NX';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1699990055000);
-      expect(result.state).toBe('End');
+      expect(result.flowState).toBe('End');
+      expect(result.encryption).toBe('Not Encrypted');
       expect(result.packetsSrcToDest).toBeUndefined();
     });
 
     it('should fall back to ingest time when the tuple timestamp is invalid', () => {
       const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1700000000000);
-      const tuple = 'not-a-timestamp,10.0.0.4,10.0.0.5,12345,443,6,O,A,E';
+      const tuple = 'not-a-timestamp,10.0.0.4,10.0.0.5,12345,443,6,O,E,NX';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1700000000000);
@@ -58,7 +70,7 @@ describe('Parser', () => {
     it('should keep a VNet v4 millisecond timestamp (13-digit) as-is', () => {
       // Real VNet Flow Logs v4 tuples carry epoch milliseconds.
       const tuple =
-        '1782658803422,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,1,64,1,64';
+        '1782658803422,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,1,64,1,64';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1782658803422);
@@ -66,7 +78,7 @@ describe('Parser', () => {
 
     it('should promote a legacy NSG second timestamp (10-digit) to ms', () => {
       // Legacy NSG flow logs carry epoch seconds; must be promoted to ms.
-      const tuple = '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C';
+      const tuple = '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX';
       const result = parser.parseFlowTuple(tuple);
 
       expect(result.timestamp).toBe(1699990055000);
@@ -94,7 +106,7 @@ describe('Parser', () => {
                     {
                       rule: 'DefaultRule_AllowAll',
                       flowTuples: [
-                        '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,10,1500,8,1200',
+                        '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,10,1500,8,1200',
                       ],
                     },
                   ],
@@ -230,8 +242,8 @@ describe('Parser', () => {
                   {
                     rule: 'AllowAll',
                     flowTuples: [
-                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,10,1500,8,1200',
-                      '1699990060,10.0.0.4,10.0.0.6,12346,80,6,O,A,B,1,100,0,0',
+                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,10,1500,8,1200',
+                      '1699990060,10.0.0.4,10.0.0.6,12346,80,6,O,B,X,1,100,0,0',
                     ],
                   },
                 ],
@@ -251,8 +263,8 @@ describe('Parser', () => {
       expect(entries[0].attributes.destPort).toBe(443);
       expect(entries[0].attributes.protocol).toBe('TCP');
       expect(entries[0].attributes.direction).toBe('Outbound');
-      expect(entries[0].attributes.action).toBe('Allowed');
-      expect(entries[0].attributes.state).toBe('Continuing');
+      expect(entries[0].attributes.flowState).toBe('Continuing');
+      expect(entries[0].attributes.encryption).toBe('Not Encrypted');
       expect(entries[0].attributes.packetsSrcToDest).toBe(10);
       expect(entries[0].attributes.bytesSrcToDest).toBe(1500);
       expect(entries[0].attributes.packetsDestToSrc).toBe(8);
@@ -266,8 +278,8 @@ describe('Parser', () => {
       expect(entries[1].attributes.destPort).toBe(80);
       expect(entries[1].attributes.protocol).toBe('TCP');
       expect(entries[1].attributes.direction).toBe('Outbound');
-      expect(entries[1].attributes.action).toBe('Allowed');
-      expect(entries[1].attributes.state).toBe('Begin');
+      expect(entries[1].attributes.flowState).toBe('Begin');
+      expect(entries[1].attributes.encryption).toBe('Encrypted');
       expect(entries[1].attributes.packetsSrcToDest).toBe(1);
       expect(entries[1].attributes.bytesSrcToDest).toBe(100);
       expect(entries[1].attributes.packetsDestToSrc).toBe(0);
@@ -303,7 +315,7 @@ describe('Parser', () => {
                   {
                     rule: 'AllowAll',
                     flowTuples: [
-                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,A,C,10,1500,8,1200',
+                      '1699990055,10.0.0.4,10.0.0.5,12345,443,6,O,C,NX,10,1500,8,1200',
                     ],
                   },
                 ],
