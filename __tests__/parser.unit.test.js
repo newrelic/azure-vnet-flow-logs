@@ -206,7 +206,6 @@ describe('Parser', () => {
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet'
       );
 
-      expect(context.targetResourceType).toBe('virtualnetworks');
       expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBeUndefined();
     });
@@ -216,7 +215,6 @@ describe('Parser', () => {
         '/subscriptions/sub-123/resourceGroups/rg-prod/providers/Microsoft.Network/virtualNetworks/my-vnet/subnets/my-subnet'
       );
 
-      expect(context.targetResourceType).toBe('virtualnetworks/subnets');
       expect(context.virtualNetworkName).toBe('my-vnet');
       expect(context.subnetName).toBe('my-subnet');
     });
@@ -328,9 +326,7 @@ describe('Parser', () => {
       const entries = parser.transformRecords(records, {});
 
       expect(entries).toHaveLength(1);
-      expect(entries[0].attributes.targetResourceType).toBe(
-        'virtualnetworks/subnets'
-      );
+      expect(entries[0].attributes.targetResourceType).toBeUndefined();
       expect(entries[0].attributes.virtualNetworkName).toBe('my-vnet');
       expect(entries[0].attributes.subnetName).toBe('my-subnet');
       expect(entries[0].attributes.resourceType).toBe('virtualNetworks');

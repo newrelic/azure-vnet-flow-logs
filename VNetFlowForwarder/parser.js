@@ -318,20 +318,16 @@ function parseTargetResourceContext(targetResourceID) {
     return {};
   }
 
-  const typeParts = [];
   const nameByType = {};
 
   for (let i = 0; i + 1 < segments.length; i += 2) {
     const typePart = segments[i];
     const namePart = segments[i + 1];
 
-    typeParts.push(typePart.toLowerCase());
     nameByType[typePart.toLowerCase()] = namePart;
   }
 
-  const context = {
-    targetResourceType: typeParts.join('/'),
-  };
+  const context = {};
 
   if (nameByType.virtualnetworks) {
     context.virtualNetworkName = nameByType.virtualnetworks;
@@ -387,9 +383,6 @@ function transformRecords(records, pathMetadata) {
       if (targetContext.networkInterfaceName) {
         enriched.networkInterfaceName = targetContext.networkInterfaceName;
       }
-      if (targetContext.targetResourceType) {
-        enriched.targetResourceType = targetContext.targetResourceType;
-      }
     }
 
     const baseAttrs = {
@@ -404,7 +397,6 @@ function transformRecords(records, pathMetadata) {
       flowLogGUID: record.flowLogGUID || '',
       flowLogResourceID: record.flowLogResourceID || '',
       targetResourceID: record.targetResourceID || '',
-      targetResourceType: enriched.targetResourceType || '',
       virtualNetworkName: enriched.virtualNetworkName || '',
       subnetName: enriched.subnetName || '',
       networkInterfaceName: enriched.networkInterfaceName || '',
