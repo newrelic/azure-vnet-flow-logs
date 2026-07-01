@@ -16,14 +16,11 @@ describe('Config', () => {
 
   it('should throw if no license key configured', () => {
     const origLicense = config.nrLicenseKey;
-    const origInsert = config.nrInsertKey;
     config.nrLicenseKey = '';
-    config.nrInsertKey = '';
 
     expect(() => config.validate()).toThrow('Missing NR_LICENSE_KEY');
 
     config.nrLicenseKey = origLicense;
-    config.nrInsertKey = origInsert;
   });
 
   it('should throw if no storage connection', () => {

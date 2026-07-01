@@ -29,7 +29,7 @@ This architecture ensures efficient processing of high-volume flow logs with min
 
 - Azure subscription with [VNet Flow Logs](https://learn.microsoft.com/en-us/azure/network-watcher/vnet-flow-logs-overview) enabled
 - Storage account where VNet flow logs are stored (PT1H.json files)
-- New Relic account with a valid License Key or Insert API Key
+- New Relic account with a valid Ingest License Key
 
 ## Quick Start - Deploy with ARM/Bicep
 
@@ -41,8 +41,8 @@ The easiest way to deploy is using the provided ARM or Bicep templates, which cr
 az deployment group create \
   --resource-group <your-resource-group> \
   --template-file bicep/azuredeploy-vnetflowlogsforwarder.bicep \
-  --parameters newRelicLicenseKey='<your-nr-license-key>' \
-               sourceStorageAccountName='<existing-storage-with-flow-logs>'
+  --parameters newRelicIngestLicenseKey='<your-nr-license-key>' \
+               flowLogsStorageAccountName='<existing-storage-with-flow-logs>'
 ```
 
 ### Option 2: Deploy with ARM Template
@@ -51,17 +51,16 @@ az deployment group create \
 az deployment group create \
   --resource-group <your-resource-group> \
   --template-file arm/azuredeploy-vnetflowlogsforwarder.json \
-  --parameters newRelicLicenseKey='<your-nr-license-key>' \
-               sourceStorageAccountName='<existing-storage-with-flow-logs>'
+  --parameters newRelicIngestLicenseKey='<your-nr-license-key>' \
+               flowLogsStorageAccountName='<existing-storage-with-flow-logs>'
 ```
 
 ### Template Parameters
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `newRelicLicenseKey` | Yes | New Relic License Key |
-| `sourceStorageAccountName` | No | Existing storage account with VNet flow logs. Leave blank to create a new one. |
-| `location` | No | Azure region (defaults to resource group location) |
+| `newRelicIngestLicenseKey` | Yes | New Relic Ingest License Key |
+| `flowLogsStorageAccountName` | No | Existing storage account where Azure writes your VNet flow logs. Leave blank to create a new one. |
 | `newRelicEndpoint` | No | NR Logs API endpoint: US (default), EU, or JP |
 | `newRelicTags` | No | Custom tags for logs (e.g., `env:prod;team:network`) |
 | `maxRetries` | No | Max retries for NR delivery (default: 3) |
@@ -69,7 +68,8 @@ az deployment group create \
 | `maxEventBatchSize` | No | Max Event Grid blob-created notifications per function invocation (blobs-per-invocation, not log events). Overrides `host.json`. (default: 100) |
 | `minEventBatchSize` | No | Min Event Grid blob-created notifications per function invocation. Overrides `host.json`. (default: 20) |
 | `maxWaitTime` | No | Max time to build up a batch before invoking the function, in `HH:MM:SS`. Overrides `host.json`. (default: 00:00:30) |
-| `debugEnabled` | No | Deprecated. Use logger level configuration in `host.json` / app settings to control debug output. |
+| `functionLogLevel` | No | Default log level for the forwarder: `Trace`, `Debug`, `Information` (default), `Warning`, or `Error` |
+| `eventHubScalingMode` | No | Event Hub scaling profile: `Basic` (default, 4 partitions) or `Enterprise` (32 partitions, auto-inflate) |
 | `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
 | `authenticationMode` | No | How the function authenticates to the Event Hub and storage accounts: `Local Authentication` (default, shared-key connection strings) or `Managed Identity` (keyless, via the function's system-assigned identity). See [Authentication mode](#authentication-mode). |
 
@@ -107,7 +107,7 @@ The function uses the following environment variables (automatically configured 
 
 | Variable | Description |
 |----------|-------------|
-| `NR_LICENSE_KEY` | New Relic License Key (or use `NR_INSERT_KEY` for Insert API Key) |
+| `NR_LICENSE_KEY` | New Relic Ingest License Key |
 | `EVENTHUB_NAME` | Name of the Event Hub |
 | `SOURCE_STORAGE_CONNECTION` | Connection string for the storage account containing VNet flow logs |
 | `CURSOR_STORAGE_CONNECTION` | Connection string for the storage account used for cursor tracking |
@@ -131,7 +131,7 @@ The function uses the following environment variables (automatically configured 
 
 ### Logging Level Configuration
 
-Debug output is controlled through `host.json` logging levels (instead of a `debugEnabled` runtime flag).
+Debug output is controlled through logging levels rather than a runtime debug flag. The default level is set at deploy time via the `functionLogLevel` parameter, which maps to the `AzureFunctionsJobHost__logging__logLevel__default` app setting.
 
 The default `host.json` configuration in this repo uses `Information` level.
 To temporarily enable debug logs at runtime, set app settings such as:

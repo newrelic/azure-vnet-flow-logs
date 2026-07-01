@@ -2,32 +2,18 @@
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
     "parameters": {
-        "newRelicLicenseKey": {
+        "newRelicIngestLicenseKey": {
             "type": "securestring",
-            "defaultValue": "",
+            "minLength": 1,
             "metadata": {
-                "description": "Optional. New Relic License Key (modern ingest key). Provide either this or newRelicInsertKey; one of the two is required."
+                "description": "Required. New Relic Ingest License Key."
             }
         },
-        "newRelicInsertKey": {
-            "type": "securestring",
-            "defaultValue": "",
-            "metadata": {
-                "description": "Optional. Legacy New Relic Insert Key (for older accounts). Provide either this or newRelicLicenseKey; one of the two is required."
-            }
-        },
-        "sourceStorageAccountName": {
+        "flowLogsStorageAccountName": {
             "type": "string",
             "defaultValue": "",
             "metadata": {
-                "description": "Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with 'nrvnetflsrc')."
-            }
-        },
-        "location": {
-            "type": "string",
-            "defaultValue": "",
-            "metadata": {
-                "description": "Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group."
+                "description": "Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one."
             }
         },
         "newRelicEndpoint": {
@@ -39,14 +25,14 @@
                 "https://log-api.jp.nr-data.net/log/v1"
             ],
             "metadata": {
-                "description": "Optional. The Logs API endpoint for your New Relic account region. Select US (default), EU, or JP endpoint."
+                "description": "Optional. The Logs API endpoint for your New Relic account region."
             }
         },
         "newRelicTags": {
             "type": "string",
             "defaultValue": "",
             "metadata": {
-                "description": "Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network)."
+                "description": "Optional. Custom tags to attach to every log sent to New Relic. Format: semicolon-separated key:value pairs (e.g. env:prod;team:network)."
             }
         },
         "maxRetries": {
@@ -63,51 +49,18 @@
                 "description": "Optional. Retry interval in milliseconds when sending logs to New Relic."
             }
         },
-        "debugEnabled": {
-            "type": "bool",
-            "defaultValue": false,
-            "metadata": {
-                "description": "Optional. Enable debug logging for troubleshooting."
-            }
-        },
-        "cursorRetentionHours": {
-            "type": "int",
-            "defaultValue": 48,
-            "minValue": 1,
-            "metadata": {
-                "description": "Optional. Number of hours to retain blob-cursor records before the cleanup job removes them."
-            }
-        },
-        "cursorCleanupSchedule": {
+        "functionLogLevel": {
             "type": "string",
-            "defaultValue": "0 0 3 * * *",
+            "defaultValue": "Information",
+            "allowedValues": [
+                "Trace",
+                "Debug",
+                "Information",
+                "Warning",
+                "Error"
+            ],
             "metadata": {
-                "description": "Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC)."
-            }
-        },
-        "maxConsecutiveFailures": {
-            "type": "int",
-            "defaultValue": 3,
-            "minValue": 1,
-            "metadata": {
-                "description": "Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event."
-            }
-        },
-        "maximumInstanceCount": {
-            "type": "int",
-            "defaultValue": 100,
-            "minValue": 1,
-            "maxValue": 1000,
-            "metadata": {
-                "description": "Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000."
-            }
-        },
-        "instanceMemoryMB": {
-            "type": "int",
-            "defaultValue": 2048,
-            "allowedValues": [ 512, 2048, 4096 ],
-            "metadata": {
-                "description": "Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096."
+                "description": "Optional. Default log level for the forwarder."
             }
         },
         "eventHubScalingMode": {
@@ -115,7 +68,7 @@
             "allowedValues": [ "Basic", "Enterprise" ],
             "defaultValue": "Basic",
             "metadata": {
-                "description": "Optional. Event Hub scaling profile. 'Basic' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). 'Enterprise' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment."
+                "description": "Optional. Event Hub scaling profile. Basic uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). Enterprise enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment."
             }
         },
         "maxEventBatchSize": {
@@ -145,7 +98,7 @@
             "type": "bool",
             "defaultValue": false,
             "metadata": {
-                "description": "Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled."
+                "description": "Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible."
             }
         },
         "authenticationMode": {
@@ -162,10 +115,10 @@
     },
     "variables": {
         "uniqueResourceNameSuffix": "[uniqueString(resourceGroup().id)]",
-        "location": "[if(empty(parameters('location')), resourceGroup().location, parameters('location'))]",
+        "location": "[resourceGroup().location]",
 
-        "createNewSourceStorage": "[empty(parameters('sourceStorageAccountName'))]",
-        "sourceStorageAccountNameResolved": "[if(variables('createNewSourceStorage'), concat('nrvnetflsrc', variables('uniqueResourceNameSuffix')), parameters('sourceStorageAccountName'))]",
+        "createNewFlowLogsStorage": "[empty(parameters('flowLogsStorageAccountName'))]",
+        "flowLogsStorageAccountNameResolved": "[if(variables('createNewFlowLogsStorage'), concat('nrvnetflsrc', variables('uniqueResourceNameSuffix')), parameters('flowLogsStorageAccountName'))]",
 
         "eventHubNamespaceName": "[concat('nrvnetflowlogs-eventhub-namespace-', variables('uniqueResourceNameSuffix'))]",
         "eventHubName": "nrvnetflowlogs-eventhub",
@@ -220,7 +173,7 @@
         "functionStorageTablePrivateEndpointName": "[concat(variables('functionStorageAccountName'), '-table-pe')]",
         "functionAppPrivateEndpointName": "[concat(variables('functionAppName'), '-sites-pe')]",
 
-        "sourceStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
+        "flowLogsStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
 
         "flexConsumptionASP": {
             "kind": "functionapp,linux",
@@ -253,23 +206,19 @@
             },
             {
                 "name": "CURSOR_RETENTION_HOURS",
-                "value": "[string(parameters('cursorRetentionHours'))]"
+                "value": "48"
             },
             {
                 "name": "CURSOR_CLEANUP_SCHEDULE",
-                "value": "[parameters('cursorCleanupSchedule')]"
+                "value": "0 0 3 * * *"
             },
             {
                 "name": "MAX_CONSECUTIVE_FAILURES",
-                "value": "[string(parameters('maxConsecutiveFailures'))]"
+                "value": "5"
             },
             {
                 "name": "NR_LICENSE_KEY",
-                "value": "[parameters('newRelicLicenseKey')]"
-            },
-            {
-                "name": "NR_INSERT_KEY",
-                "value": "[parameters('newRelicInsertKey')]"
+                "value": "[parameters('newRelicIngestLicenseKey')]"
             },
             {
                 "name": "NR_ENDPOINT",
@@ -288,12 +237,12 @@
                 "value": "[string(parameters('retryInterval'))]"
             },
             {
-                "name": "DEBUG_ENABLED",
-                "value": "[string(parameters('debugEnabled'))]"
-            },
-            {
                 "name": "FUNCTIONS_EXTENSION_VERSION",
                 "value": "~4"
+            },
+            {
+                "name": "AzureFunctionsJobHost__logging__logLevel__default",
+                "value": "[parameters('functionLogLevel')]"
             },
             {
                 "name": "AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize",
@@ -319,7 +268,7 @@
             },
             {
                 "name": "SOURCE_STORAGE_BLOB_SERVICE_URI",
-                "value": "[concat('https://', variables('sourceStorageAccountNameResolved'), '.blob.', environment().suffixes.storage)]"
+                "value": "[concat('https://', variables('flowLogsStorageAccountNameResolved'), '.blob.', environment().suffixes.storage)]"
             },
             {
                 "name": "CURSOR_STORAGE_TABLE_SERVICE_URI",
@@ -331,8 +280,8 @@
         {
             "type": "Microsoft.Storage/storageAccounts",
             "apiVersion": "2023-05-01",
-            "name": "[variables('sourceStorageAccountNameResolved')]",
-            "condition": "[variables('createNewSourceStorage')]",
+            "name": "[variables('flowLogsStorageAccountNameResolved')]",
+            "condition": "[variables('createNewFlowLogsStorage')]",
             "location": "[variables('location')]",
             "sku": {
                 "name": "Standard_LRS"
@@ -418,10 +367,10 @@
                 "type": "SystemAssigned"
             },
             "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]"
             ],
             "properties": {
-                "source": "[variables('sourceStorageAccountId')]",
+                "source": "[variables('flowLogsStorageAccountId')]",
                 "topicType": "Microsoft.Storage.StorageAccounts"
             }
         },
@@ -544,8 +493,8 @@
                         }
                     },
                     "scaleAndConcurrency": {
-                        "maximumInstanceCount": "[parameters('maximumInstanceCount')]",
-                        "instanceMemoryMB": "[parameters('instanceMemoryMB')]"
+                        "maximumInstanceCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 32, 4)]",
+                        "instanceMemoryMB": 2048
                     },
                     "runtime": {
                         "name": "node",
@@ -553,7 +502,7 @@
                     }
                 },
                 "siteConfig": {
-                    "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2021-11-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('sourceStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
+                    "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2021-11-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
                     "ftpsState": "Disabled"
                 }
             }
@@ -625,12 +574,12 @@
             "condition": "[variables('useManagedIdentity')]",
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved')), resourceId('Microsoft.Web/sites', variables('functionAppName')), 'StorageBlobDataReader')]",
+            "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), resourceId('Microsoft.Web/sites', variables('functionAppName')), 'StorageBlobDataReader')]",
             "dependsOn": [
                 "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]"
             ],
-            "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('sourceStorageAccountNameResolved'))]",
+            "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
             "properties": {
                 "roleDefinitionId": "[variables('storageBlobDataReaderRoleId')]",
                 "principalId": "[if(variables('useManagedIdentity'), reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'Full').identity.principalId, '')]",

@@ -1,18 +1,12 @@
-@description('Optional. New Relic License Key (modern ingest key). Provide either this or newRelicInsertKey; one of the two is required.')
+@description('Required. New Relic Ingest License Key.')
 @secure()
-param newRelicLicenseKey string = ''
+@minLength(1)
+param newRelicIngestLicenseKey string
 
-@description('Optional. Legacy New Relic Insert Key (for older accounts). Provide either this or newRelicLicenseKey; one of the two is required.')
-@secure()
-param newRelicInsertKey string = ''
+@description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
+param flowLogsStorageAccountName string = ''
 
-@description('Optional. Name of the existing storage account where VNet Flow Logs PT1H.json files are stored. Must be in the same resource group as this deployment. Leave this blank to create a new storage account (its name will start with \'nrvnetflsrc\').')
-param sourceStorageAccountName string = ''
-
-@description('Optional. Region where all resources included in this template will be deployed. Leave this blank to use the same region as the one of the resource group.')
-param location string = ''
-
-@description('Optional. The Logs API endpoint for your New Relic account region. Select US (default), EU, or JP endpoint.')
+@description('Optional. The Logs API endpoint for your New Relic account region.')
 @allowed([
   'https://log-api.newrelic.com/log/v1'
   'https://log-api.eu.newrelic.com/log/v1'
@@ -20,7 +14,7 @@ param location string = ''
 ])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
-@description('Optional. Custom tags to add to logs sent to New Relic (semicolon-separated key:value pairs, e.g. env:prod;team:network).')
+@description('Optional. Custom tags to attach to every log sent to New Relic. Format: semicolon-separated key:value pairs (e.g. env:prod;team:network).')
 param newRelicTags string = ''
 
 @description('Optional. Maximum number of retries when sending logs to New Relic.')
@@ -29,34 +23,17 @@ param maxRetries int = 3
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
 
-@description('Optional. Enable debug logging for troubleshooting.')
-param debugEnabled bool = false
-
-@description('Optional. Number of hours to retain blob-cursor records before the cleanup job removes them.')
-@minValue(1)
-param cursorRetentionHours int = 48
-
-@description('Optional. NCRONTAB schedule for the cursor cleanup timer trigger (default: daily at 03:00 UTC).')
-param cursorCleanupSchedule string = '0 0 3 * * *'
-
-@description('Optional. Number of consecutive failures per blob before the forwarder skips it as a poison event.')
-@minValue(1)
-param maxConsecutiveFailures int = 3
-
-@description('Optional. Maximum number of Flex Consumption instances the function app can scale to. Range: 1 to 1000.')
-@minValue(1)
-@maxValue(1000)
-param maximumInstanceCount int = 100
-
-@description('Optional. Memory allocated per Flex Consumption instance, in MB. Allowed values: 512, 2048, 4096.')
+@description('Optional. Default log level for the forwarder.')
 @allowed([
-  512
-  2048
-  4096
+  'Trace'
+  'Debug'
+  'Information'
+  'Warning'
+  'Error'
 ])
-param instanceMemoryMB int = 2048
+param functionLogLevel string = 'Information'
 
-@description('Optional. Event Hub scaling profile. \'Basic\' uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). \'Enterprise\' enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
+@description('Optional. Event Hub scaling profile. Basic uses 1 throughput unit with 4 partitions and no auto-inflate (suitable for low-to-medium traffic). Enterprise enables auto-inflate up to 40 throughput units with 32 partitions (recommended for high-throughput / large-scale flow-log volumes). Note: partition count is fixed at Event Hub creation time and cannot be changed by a subsequent deployment.')
 @allowed([
   'Basic'
   'Enterprise'
@@ -74,7 +51,7 @@ param minEventBatchSize int = 5
 @description('Optional. Maximum amount of time to wait to build up a batch before invoking the function, in HH:MM:SS format. Default is 00:00:30.')
 param maxWaitTime string = '00:00:30'
 
-@description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
+@description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
 @description('Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use \'Local Authentication\' (default) to connect via shared-key connection strings, or \'Managed Identity\' for keyless authentication using the function\'s system-assigned identity.')
@@ -85,11 +62,11 @@ param disablePublicAccessToStorageAccount bool = false
 param authenticationMode string = 'Local Authentication'
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
-var effectiveLocation = (empty(location) ? resourceGroup().location : location)
-var createNewSourceStorage = empty(sourceStorageAccountName)
-var resolvedSourceStorageName = (createNewSourceStorage
+var effectiveLocation = resourceGroup().location
+var createNewFlowLogsStorage = empty(flowLogsStorageAccountName)
+var resolvedFlowLogsStorageName = (createNewFlowLogsStorage
   ? 'nrvnetflsrc${uniqueResourceNameSuffix}'
-  : sourceStorageAccountName)
+  : flowLogsStorageAccountName)
 var eventHubNamespaceName = 'nrvnetflowlogs-eventhub-namespace-${uniqueResourceNameSuffix}'
 var resolvedEventHubName = 'nrvnetflowlogs-eventhub'
 var eventHubConsumerGroupName = 'nrvnetflowlogs-consumergroup'
@@ -125,7 +102,7 @@ var storageBlobDataReaderRoleId = subscriptionResourceId(
   '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
 )
 var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
-var sourceStorageAccountId = sourceStorageAccountNameResolved.id
+var flowLogsStorageAccountId = flowLogsStorageAccountNameResolved.id
 
 var useManagedIdentity = (authenticationMode == 'Managed Identity')
 
@@ -145,7 +122,7 @@ var managedIdentityAppSettings = [
   }
   {
     name: 'SOURCE_STORAGE_BLOB_SERVICE_URI'
-    value: 'https://${resolvedSourceStorageName}.blob.${environment().suffixes.storage}'
+    value: 'https://${resolvedFlowLogsStorageName}.blob.${environment().suffixes.storage}'
   }
   {
     name: 'CURSOR_STORAGE_TABLE_SERVICE_URI'
@@ -159,7 +136,7 @@ var localAuthAppSettings = [
   }
   {
     name: 'SOURCE_STORAGE_CONNECTION'
-    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
   }
   {
     name: 'CURSOR_STORAGE_CONNECTION'
@@ -204,8 +181,8 @@ var flexConsumptionASP = {
   }
 }
 
-resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewSourceStorage) {
-  name: resolvedSourceStorageName
+resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewFlowLogsStorage) {
+  name: resolvedFlowLogsStorageName
   location: effectiveLocation
   sku: {
     name: 'Standard_LRS'
@@ -236,8 +213,8 @@ resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@202
 // Symbolic reference to the source storage account so a role assignment can be
 // scoped to it in Managed Identity mode, whether it is newly created here or a
 // pre-existing account named via sourceStorageAccountName.
-resource sourceStorageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: resolvedSourceStorageName
+resource flowLogsStorageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: resolvedFlowLogsStorageName
 }
 
 resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' = {
@@ -287,7 +264,7 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
     type: 'SystemAssigned'
   }
   properties: {
-    source: sourceStorageAccountId
+    source: flowLogsStorageAccountId
     topicType: 'Microsoft.Storage.StorageAccounts'
   }
 }
@@ -391,8 +368,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
       }
       scaleAndConcurrency: {
-        maximumInstanceCount: maximumInstanceCount
-        instanceMemoryMB: instanceMemoryMB
+        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
+        instanceMemoryMB: 2048
       }
       runtime: {
         name: 'node'
@@ -419,23 +396,19 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         }
         {
           name: 'CURSOR_RETENTION_HOURS'
-          value: string(cursorRetentionHours)
+          value: '48'
         }
         {
           name: 'CURSOR_CLEANUP_SCHEDULE'
-          value: cursorCleanupSchedule
+          value: '0 0 3 * * *'
         }
         {
           name: 'MAX_CONSECUTIVE_FAILURES'
-          value: string(maxConsecutiveFailures)
+          value: '5'
         }
         {
           name: 'NR_LICENSE_KEY'
-          value: newRelicLicenseKey
-        }
-        {
-          name: 'NR_INSERT_KEY'
-          value: newRelicInsertKey
+          value: newRelicIngestLicenseKey
         }
         {
           name: 'NR_ENDPOINT'
@@ -454,12 +427,12 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: string(retryInterval)
         }
         {
-          name: 'DEBUG_ENABLED'
-          value: string(debugEnabled)
-        }
-        {
           name: 'FUNCTIONS_EXTENSION_VERSION'
           value: '~4'
+        }
+        {
+          name: 'AzureFunctionsJobHost__logging__logLevel__default'
+          value: functionLogLevel
         }
         {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize'
@@ -541,15 +514,15 @@ resource functionAppEventHubsDataReceiverAssignment 'Microsoft.Authorization/rol
 // Managed Identity mode: allow the function to read VNet Flow Log blobs from
 // the source storage account without a shared-key connection string.
 resource functionAppSourceStorageBlobDataReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
-  scope: sourceStorageRef
-  name: guid(sourceStorageRef.id, functionApp.id, 'StorageBlobDataReader')
+  scope: flowLogsStorageRef
+  name: guid(flowLogsStorageRef.id, functionApp.id, 'StorageBlobDataReader')
   properties: {
     roleDefinitionId: storageBlobDataReaderRoleId
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
   dependsOn: [
-    sourceStorageAccountNameResolved
+    flowLogsStorageAccountNameResolved
   ]
 }
 
