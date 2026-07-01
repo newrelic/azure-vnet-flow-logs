@@ -15,20 +15,19 @@ let blobServiceClient = null;
 // Flow-log blobs end with a constant trailing "closer" block ("]}"). New data
 // is appended before it, so the cursor must track the last data block, not the
 // closer — which would otherwise always look like the latest processed block.
-const CLOSER_BLOCK_ID_PATTERN = /^Z0*$/;
+// The closer's block ID is the fixed 33-char string "Z" + 32 zeros, which Azure
+// returns base64-encoded; match it exactly so no data block can be mistaken for
+// it.
+const CLOSER_BLOCK_ID = Buffer.from('Z' + '0'.repeat(32)).toString('base64');
 
 function isCloserBlock(block) {
-  try {
-    const decoded = Buffer.from(block.name, 'base64').toString('latin1');
-    return CLOSER_BLOCK_ID_PATTERN.test(decoded);
-  } catch {
-    return false;
-  }
+  return block.name === CLOSER_BLOCK_ID;
 }
 
 /**
  * Index of the last data block (the cursor frontier), skipping the trailing
- * closer block. Falls back to the last block if none look like data blocks.
+ * closer block. Returns -1 when there is no data block (e.g. a blob holding
+ * only the closer), so callers never commit a closer as the cursor.
  *
  * @param {Array<{name: string}>} blocks
  * @returns {number}
@@ -39,7 +38,7 @@ function lastDataBlockIndex(blocks) {
       return i;
     }
   }
-  return blocks.length - 1;
+  return -1;
 }
 
 /**
@@ -128,6 +127,11 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
   }
 
   const frontierIndex = lastDataBlockIndex(blocks);
+  if (frontierIndex < 0) {
+    // Blob holds only the closer (or is otherwise data-less) — nothing to send,
+    // and nothing to commit as a cursor.
+    return null;
+  }
 
   let startIndex = 0;
   if (lastBlockId !== null) {

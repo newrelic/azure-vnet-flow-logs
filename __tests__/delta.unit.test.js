@@ -82,6 +82,18 @@ describe('Delta', () => {
       expect(download).toHaveBeenCalledWith(0, 12 + 50 + 2);
       expect(result.lastBlockId).toBe(d1.name);
     });
+
+    it('returns null (never commits a closer) when the blob holds only the closer', async () => {
+      // Freshly-initialized blob: the terminator exists but no data has landed.
+      // The fallback must not treat the closer as a data block and commit it as
+      // the cursor — that is the very bug this change guards against.
+      const { download } = mockBlob({ blocks: [CLOSER] });
+
+      const result = await delta.downloadDelta('c', 'b', null);
+
+      expect(result).toBeNull();
+      expect(download).not.toHaveBeenCalled();
+    });
   });
 
   describe('parseBlobPath', () => {
