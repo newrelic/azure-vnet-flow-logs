@@ -8,18 +8,30 @@
  */
 
 const { BlobServiceClient } = require('@azure/storage-blob');
+const { DefaultAzureCredential } = require('@azure/identity');
 const config = require('./config');
 
 let blobServiceClient = null;
 
 /**
  * Get or create the Blob Service client (lazy singleton).
+ *
+ * In Managed Identity mode, authenticates to the source storage account via
+ * the function's managed identity using the blob service endpoint. Otherwise
+ * uses a shared-key connection string.
  */
 function getBlobServiceClient() {
   if (!blobServiceClient) {
-    blobServiceClient = BlobServiceClient.fromConnectionString(
-      config.sourceStorageConnection
-    );
+    if (config.useManagedIdentity()) {
+      blobServiceClient = new BlobServiceClient(
+        config.sourceStorageBlobServiceUri,
+        new DefaultAzureCredential()
+      );
+    } else {
+      blobServiceClient = BlobServiceClient.fromConnectionString(
+        config.sourceStorageConnection
+      );
+    }
   }
   return blobServiceClient;
 }

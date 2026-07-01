@@ -19,26 +19,41 @@ jest.mock('@azure/event-hubs', () => ({
   })),
 }));
 
-jest.mock('@azure/data-tables', () => ({
-  TableClient: {
-    fromConnectionString: jest.fn().mockImplementation(() => ({
-      getEntity: jest.fn(),
-      upsertEntity: jest.fn(),
-      listEntities: jest.fn(),
-      deleteEntity: jest.fn(),
-    })),
-  },
-}));
+jest.mock('@azure/data-tables', () => {
+  const newTableClientInstance = () => ({
+    getEntity: jest.fn(),
+    upsertEntity: jest.fn(),
+    listEntities: jest.fn(),
+    deleteEntity: jest.fn(),
+  });
+  // Constructor form (Managed Identity) + static fromConnectionString (Local Auth)
+  const TableClient = jest
+    .fn()
+    .mockImplementation(() => newTableClientInstance());
+  TableClient.fromConnectionString = jest
+    .fn()
+    .mockImplementation(() => newTableClientInstance());
+  return { TableClient };
+});
 
-jest.mock('@azure/storage-blob', () => ({
-  BlobServiceClient: {
-    fromConnectionString: jest.fn().mockImplementation(() => ({
-      getContainerClient: jest.fn().mockReturnValue({
-        getBlobClient: jest.fn().mockReturnValue({
-          getBlockList: jest.fn(),
-          download: jest.fn(),
-        }),
+jest.mock('@azure/storage-blob', () => {
+  const newBlobServiceClientInstance = () => ({
+    getContainerClient: jest.fn().mockReturnValue({
+      getBlockBlobClient: jest.fn().mockReturnValue({
+        getBlockList: jest.fn(),
       }),
-    })),
-  },
+    }),
+  });
+  // Constructor form (Managed Identity) + static fromConnectionString (Local Auth)
+  const BlobServiceClient = jest
+    .fn()
+    .mockImplementation(() => newBlobServiceClientInstance());
+  BlobServiceClient.fromConnectionString = jest
+    .fn()
+    .mockImplementation(() => newBlobServiceClientInstance());
+  return { BlobServiceClient };
+});
+
+jest.mock('@azure/identity', () => ({
+  DefaultAzureCredential: jest.fn().mockImplementation(() => ({})),
 }));

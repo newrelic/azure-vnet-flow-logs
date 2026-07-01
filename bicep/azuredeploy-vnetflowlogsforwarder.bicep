@@ -77,6 +77,13 @@ param maxWaitTime string = '00:00:30'
 @description('Optional. When enabled, the function storage account, the function app, and the Event Hub are isolated within a private Virtual Network with private endpoints; public network access to them is disabled. The source storage account (containing VNet Flow Logs) is not modified and is expected to have public network access enabled.')
 param disablePublicAccessToStorageAccount bool = false
 
+@description('Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use \'Local Authentication\' (default) to connect via shared-key connection strings, or \'Managed Identity\' for keyless authentication using the function\'s system-assigned identity.')
+@allowed([
+  'Local Authentication'
+  'Managed Identity'
+])
+param authenticationMode string = 'Local Authentication'
+
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = (empty(location) ? resourceGroup().location : location)
 var createNewSourceStorage = empty(sourceStorageAccountName)
@@ -107,8 +114,58 @@ var eventHubsDataSenderRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   '2b629674-e913-4c01-ae53-ef4638d8f975'
 )
+// Built-in role: Azure Event Hubs Data Receiver (immutable, fixed by Microsoft)
+var eventHubsDataReceiverRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  'a638d3c7-ab3a-418d-83e6-5f17a39d4fde'
+)
+// Built-in role: Storage Blob Data Reader (immutable, fixed by Microsoft)
+var storageBlobDataReaderRoleId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1'
+)
 var vnetFlowLogsForwarderFunctionArtifact = 'https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip'
 var sourceStorageAccountId = sourceStorageAccountNameResolved.id
+
+var useManagedIdentity = (authenticationMode == 'Managed Identity')
+
+// Connection settings selected by authentication mode. Only the branch chosen
+// by useManagedIdentity is evaluated by ARM, so listKeys() for the Local
+// Authentication path is not invoked when Managed Identity is in use.
+var managedIdentityAppSettings = [
+  {
+    name: 'EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace'
+    value: '${eventHubNamespaceName}.${serviceBusDnsSuffix[environment().name]}'
+  }
+  {
+    // Required on Flex Consumption so the host/scale controller authenticates
+    // the Event Hub trigger via the system-assigned managed identity.
+    name: 'EVENTHUB_CONSUMER_CONNECTION__credential'
+    value: 'managedidentity'
+  }
+  {
+    name: 'SOURCE_STORAGE_BLOB_SERVICE_URI'
+    value: 'https://${resolvedSourceStorageName}.blob.${environment().suffixes.storage}'
+  }
+  {
+    name: 'CURSOR_STORAGE_TABLE_SERVICE_URI'
+    value: 'https://${functionStorageAccountName}.table.${environment().suffixes.storage}'
+  }
+]
+var localAuthAppSettings = [
+  {
+    name: 'EVENTHUB_CONSUMER_CONNECTION'
+    value: eventHubNamespaceName_eventHubAuthRule.listKeys().primaryConnectionString
+  }
+  {
+    name: 'SOURCE_STORAGE_CONNECTION'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+  }
+  {
+    name: 'CURSOR_STORAGE_CONNECTION'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+  }
+]
 
 var virtualNetworkName = 'nrvnetflowlogs-vnet-${uniqueResourceNameSuffix}'
 var functionsSubnetName = 'functions-subnet'
@@ -174,6 +231,13 @@ resource sourceStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@202
     }
     accessTier: 'Hot'
   }
+}
+
+// Symbolic reference to the source storage account so a role assignment can be
+// scoped to it in Managed Identity mode, whether it is newly created here or a
+// pre-existing account named via sourceStorageAccountName.
+resource sourceStorageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: resolvedSourceStorageName
 }
 
 resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' = {
@@ -336,30 +400,22 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       }
     }
     siteConfig: {
-      appSettings: [
+      appSettings: concat([
         {
           name: 'AzureWebJobsStorage__accountName'
           value: functionStorageAccountName
+        }
+        {
+          name: 'AUTHENTICATION_MODE'
+          value: authenticationMode
         }
         {
           name: 'EVENTHUB_NAME'
           value: resolvedEventHubName
         }
         {
-          name: 'EVENTHUB_CONSUMER_CONNECTION'
-          value: eventHubNamespaceName_eventHubAuthRule.listKeys().primaryConnectionString
-        }
-        {
           name: 'EVENTHUB_CONSUMER_GROUP'
           value: eventHubConsumerGroupName
-        }
-        {
-          name: 'SOURCE_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedSourceStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedSourceStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-        }
-        {
-          name: 'CURSOR_STORAGE_CONNECTION'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
         {
           name: 'CURSOR_RETENTION_HOURS'
@@ -417,7 +473,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
           value: maxWaitTime
         }
-      ]
+      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings)
       ftpsState: 'Disabled'
     }
   }
@@ -468,6 +524,33 @@ resource functionAppStorageTableDataContributorAssignment 'Microsoft.Authorizati
     principalId: functionApp.identity.principalId
     principalType: 'ServicePrincipal'
   }
+}
+
+// Managed Identity mode: allow the function to receive Event Hub messages
+// without a shared-access-key connection string.
+resource functionAppEventHubsDataReceiverAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
+  scope: eventHubNamespace_resource
+  name: guid(eventHubNamespace_resource.id, functionApp.id, 'EventHubsDataReceiver')
+  properties: {
+    roleDefinitionId: eventHubsDataReceiverRoleId
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Managed Identity mode: allow the function to read VNet Flow Log blobs from
+// the source storage account without a shared-key connection string.
+resource functionAppSourceStorageBlobDataReaderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (useManagedIdentity) {
+  scope: sourceStorageRef
+  name: guid(sourceStorageRef.id, functionApp.id, 'StorageBlobDataReader')
+  properties: {
+    roleDefinitionId: storageBlobDataReaderRoleId
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
+  }
+  dependsOn: [
+    sourceStorageAccountNameResolved
+  ]
 }
 
 resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
