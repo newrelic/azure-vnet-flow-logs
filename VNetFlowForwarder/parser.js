@@ -6,7 +6,17 @@
  * Parses PT1H.json delta fragments into structured log records
  * suitable for New Relic ingestion.
  *
- * PT1H.json structure (VNet Flow Logs v2):
+ * Schema: targets the VNet Flow Logs record schema version 4 (the
+ * `flowLogVersion` field inside each record). This is Azure's versioning
+ * of the flow-log payload itself and is independent of the
+ * `Microsoft.Network/virtualNetworks` ARM API version. v4 is the current
+ * VNet flow-log schema; legacy NSG flow logs use a different schema and
+ * are not handled here.
+ *
+ * Reference:
+ *   https://learn.microsoft.com/azure/network-watcher/vnet-flow-logs-overview
+ *
+ * PT1H.json structure (flowLogVersion=4):
  * {
  *   "records": [
  *     {
@@ -241,6 +251,9 @@ function parseFlowTuple(tuple) {
     destPort: parseInt(fields[4], 10) || 0,
     protocol: PROTOCOL_MAP[fields[5]] || fields[5] || '',
     direction: DIRECTION_MAP[fields[6]] || fields[6] || '',
+    // VNet v4 layout: field 7 is flow state (B/C/E/D — D means Deny; there
+    // is no separate Allow/Deny field), field 8 is encryption. This differs
+    // from legacy NSG flow logs, which put Action at 7 and State at 8.
     flowState: FLOW_STATE_MAP[fields[7]] || fields[7] || '',
     encryption: ENCRYPTION_MAP[fields[8]] || fields[8] || '',
   };
