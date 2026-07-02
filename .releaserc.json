@@ -9,9 +9,6 @@
     ["@semantic-release/npm", {
       "npmPublish": false
     }],
-    ["@semantic-release/git", {
-      "assets": ["docs/CHANGELOG.md", "package.json", "package-lock.json"]
-    }],
     ["@semantic-release/exec", {
       "prepareCmd": "npm run package"
     }],
