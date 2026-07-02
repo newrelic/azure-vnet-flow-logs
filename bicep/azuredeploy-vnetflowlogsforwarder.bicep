@@ -40,9 +40,9 @@ param functionLogLevel string = 'Information'
 ])
 param eventHubScalingMode string = 'Basic'
 
-@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 100.')
+@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 10.')
 @minValue(1)
-param maxEventBatchSize int = 100
+param maxEventBatchSize int = 10
 
 @description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5.')
 @minValue(1)
@@ -923,7 +923,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         value: resourceGroup().name
       }
     ]
-    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n'
+    scriptContent: 'set -euo pipefail\n\necho \'Downloading package...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n'
   }
   dependsOn: [
     functionApp
