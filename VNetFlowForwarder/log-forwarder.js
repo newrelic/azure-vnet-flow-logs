@@ -7,7 +7,7 @@
  * For each message (representing a BlobCreated event):
  *   1. Reads the cursor from Table Storage
  *   2. Downloads only new blocks from the blob (delta)
- *   3. Parses VNet flow log records from the downloaded blocks
+ *   3. Parses VNet flow log records
  *   4. Sends to New Relic
  *   5. Commits the new cursor on success
  */
