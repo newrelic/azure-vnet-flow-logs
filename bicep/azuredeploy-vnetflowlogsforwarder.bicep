@@ -54,6 +54,9 @@ param maxWaitTime string = '00:00:30'
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
+@description('Do not set. Deployment timestamp used as the historical-backfill watermark: flow-log blobs created before this instant are treated as pre-existing and are not backfilled. Defaults to deploy time via utcNow().')
+param deploymentTimestamp string = utcNow('yyyy-MM-ddTHH:mm:ssZ')
+
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = resourceGroup().location
 var createNewFlowLogsStorage = empty(flowLogsStorageAccountName)
@@ -338,6 +341,10 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
         {
           name: 'CURSOR_STORAGE_CONNECTION'
           value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+        }
+        {
+          name: 'INTEGRATION_START_TIME'
+          value: deploymentTimestamp
         }
         {
           name: 'CURSOR_RETENTION_HOURS'

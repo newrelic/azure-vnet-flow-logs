@@ -11,6 +11,12 @@ const _parseInt = (val, def) => {
   return Number.isNaN(n) ? def : n;
 };
 
+const _parseDate = (val) => {
+  if (!val) return null;
+  const d = new Date(val);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
 const config = {
   // New Relic
   nrLicenseKey: process.env.NR_LICENSE_KEY || '',
@@ -23,6 +29,13 @@ const config = {
   sourceStorageConnection: process.env.SOURCE_STORAGE_CONNECTION || '',
   cursorStorageConnection: process.env.CURSOR_STORAGE_CONNECTION || '',
   cursorTableName: 'nrvnetflowlogscursors',
+
+  // Deployment watermark: the time the integration was deployed (set by the
+  // deployment template via utcNow()). Flow-log blobs created before this
+  // instant hold pre-existing/historical data that must NOT be backfilled —
+  // the Event Hub consumer starts fromEnd, so we mirror that for blob content.
+  // Null when unset (older deployments): backfill behavior is preserved.
+  integrationStartTime: _parseDate(process.env.INTEGRATION_START_TIME),
 
   // Event Hub
   eventhubConnection: process.env.EVENTHUB_CONSUMER_CONNECTION || '',

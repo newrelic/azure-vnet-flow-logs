@@ -202,6 +202,45 @@ describe('Log Forwarder', () => {
       expect(cursor.incrementFailure).toHaveBeenCalled();
     });
 
+    it('parks the cursor without sending when a blob predates deployment', async () => {
+      const mockMessage = {
+        subject:
+          '/blobServices/default/containers/test/blobs/resource/PT1H.json',
+      };
+
+      jest
+        .spyOn(cursor, 'getCursor')
+        .mockResolvedValue({ lastBlockId: null, failureCount: 0 });
+      jest
+        .spyOn(delta, 'parseBlobPath')
+        .mockReturnValue({ containerName: 'test', blobName: 'blob.json' });
+      jest.spyOn(delta, 'downloadDelta').mockResolvedValue({
+        data: '',
+        lastBlockId: 'frontier-block',
+        skippedBackfill: true,
+      });
+      const sendSpy = jest
+        .spyOn(nrClient, 'sendToNewRelic')
+        .mockResolvedValue();
+      const parseSpy = jest.spyOn(parser, 'parseRawDelta');
+      const setCursorSpy = jest.spyOn(cursor, 'setCursor').mockResolvedValue();
+
+      await logForwarder.consumerHandler(mockMessage, mockContext);
+
+      // No historical data sent to New Relic, no parsing attempted...
+      expect(sendSpy).not.toHaveBeenCalled();
+      expect(parseSpy).not.toHaveBeenCalled();
+      // ...but the cursor is advanced to the current frontier so future
+      // appends are treated as deltas.
+      expect(setCursorSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        'frontier-block'
+      );
+      expect(mockContext.log).toHaveBeenCalledWith(
+        expect.stringContaining('predates deployment')
+      );
+    });
+
     it('should count skipped events', async () => {
       jest.spyOn(cursor, 'getCursor').mockResolvedValue({
         lastBlockId: '',

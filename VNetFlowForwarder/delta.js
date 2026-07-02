@@ -111,6 +111,31 @@ async function getBlockList(containerName, blobName) {
 }
 
 /**
+ * Return the blob's creation time (when Azure first created the blob), or null
+ * if it can't be determined. Used to decide whether a first-seen blob predates
+ * the integration deployment.
+ *
+ * @param {string} containerName
+ * @param {string} blobName
+ * @returns {Promise<Date|null>}
+ */
+async function getBlobCreationTime(containerName, blobName) {
+  const client = getBlobServiceClient();
+  const blobClient = client
+    .getContainerClient(containerName)
+    .getBlobClient(blobName);
+
+  const props = await blobClient.getProperties();
+  const createdOn = props.createdOn;
+  // Only return a usable Date. An Invalid Date is truthy but every comparison
+  // against it is false, which would silently fall through to a full backfill —
+  // so normalize it to null and let the caller default to reading in full.
+  return createdOn instanceof Date && !Number.isNaN(createdOn.getTime())
+    ? createdOn
+    : null;
+}
+
+/**
  * Download the delta bytes from a blob given the last processed block ID.
  *
  * @param {string} containerName
@@ -144,6 +169,23 @@ async function downloadDelta(containerName, blobName, lastBlockId) {
       return null;
     } else {
       startIndex = cursorIndex + 1;
+    }
+  } else if (config.integrationStartTime) {
+    // First time we've seen this blob and there is no cursor. If the blob was
+    // created before the integration was deployed, its existing content is
+    // historical data that predates us. The Event Hub consumer starts fromEnd
+    // and never replays those blobs' create events; the only reason we're here
+    // is that Network Watcher appended to the *current-hour* blob after deploy.
+    // Backfilling that whole blob would ingest pre-deployment records, so we
+    // instead park the cursor at the current frontier and ingest only future
+    // appends. Blobs created at/after deploy are genuinely new and read in full.
+    const createdOn = await getBlobCreationTime(containerName, blobName);
+    if (createdOn && createdOn < config.integrationStartTime) {
+      return {
+        data: '',
+        lastBlockId: blocks[frontierIndex].name,
+        skippedBackfill: true,
+      };
     }
   }
 

@@ -100,6 +100,13 @@
             "metadata": {
                 "description": "Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible."
             }
+        },
+        "deploymentTimestamp": {
+            "type": "string",
+            "defaultValue": "[utcNow('yyyy-MM-ddTHH:mm:ssZ')]",
+            "metadata": {
+                "description": "Do not set. Deployment timestamp used as the historical-backfill watermark: flow-log blobs created before this instant are treated as pre-existing and are not backfilled. Defaults to deploy time via utcNow()."
+            }
         }
     },
     "variables": {
@@ -424,6 +431,10 @@
                         {
                             "name": "CURSOR_STORAGE_CONNECTION",
                             "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                        },
+                        {
+                            "name": "INTEGRATION_START_TIME",
+                            "value": "[parameters('deploymentTimestamp')]"
                         },
                         {
                             "name": "CURSOR_RETENTION_HOURS",

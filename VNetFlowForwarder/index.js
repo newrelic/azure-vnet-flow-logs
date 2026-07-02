@@ -26,6 +26,26 @@ function ensureConfigValidated() {
   }
 }
 
+// Fail loudly at cold start if deployment-managed settings (e.g. NR_LICENSE_KEY,
+// SOURCE_STORAGE_CONNECTION) are blank or missing. Running this in appStart
+// surfaces the error in App Insights the moment the worker starts — even with
+// zero incoming events — instead of a function that deploys "green" but drops
+// or stalls work on the first trigger. The error is logged and rethrown so the
+// host reports startup as failed.
+app.hook.appStart(() => {
+  try {
+    ensureConfigValidated();
+  } catch (err) {
+    // console.error is captured by the Functions host and surfaces in App
+    // Insights at error level.
+    console.error(
+      `VNetFlowLogs cold-start configuration error: ${err.message} ` +
+        'The function cannot process events until this app setting is present.'
+    );
+    throw err;
+  }
+});
+
 // Register the Event Hub consumer function
 app.eventHub('VNetFlowLogsConsumer', {
   eventHubName: config.eventhubName,

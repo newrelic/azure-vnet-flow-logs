@@ -173,7 +173,25 @@ async function processEvent(event, context, cursorData) {
     return null;
   }
 
-  const { data, lastBlockId: newLastBlockId } = deltaResult;
+  const { data, lastBlockId: newLastBlockId, skippedBackfill } = deltaResult;
+
+  // First sight of a blob that predates deployment: park the cursor at the
+  // current frontier without ingesting its historical content. Only appends
+  // that arrive after this point will be forwarded.
+  if (skippedBackfill) {
+    try {
+      await cursor.setCursor(blobPath, newLastBlockId);
+    } catch (cursorErr) {
+      context.error(
+        `Consumer: cursor commit failed while skipping pre-deployment backfill for ${blobPath}: ${cursorErr.message}`
+      );
+      throw cursorErr;
+    }
+    context.log(
+      `Consumer: ${blobPath} predates deployment; skipped historical backfill and parked cursor at current frontier.`
+    );
+    return { records: 0, bytes: 0 };
+  }
 
   // Step 4: Parse the delta into flow log records
   const records = parser.parseRawDelta(data);
