@@ -71,6 +71,7 @@ az deployment group create \
 | `functionLogLevel` | No | Default log level for the forwarder: `Trace`, `Debug`, `Information` (default), `Warning`, or `Error` |
 | `eventHubScalingMode` | No | Event Hub scaling profile: `Basic` (default, 4 partitions) or `Enterprise` (32 partitions, auto-inflate) |
 | `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
+| `authenticationMode` | No | How the function authenticates to the Event Hub and storage accounts: `Managed Identity` (default, keyless, via the function's system-assigned identity) or `Local Authentication` (shared-key connection strings). See [Authentication mode](#authentication-mode). |
 
 ### Resources Created
 
@@ -81,6 +82,20 @@ The template deploys:
 - **Storage Account** for function runtime and cursor table
 - **Managed Identity** with required role assignments
 - **(Optional)** VNet, private DNS zones, and private endpoints when `disablePublicAccessToStorageAccount=true`
+
+### Authentication mode
+
+The `authenticationMode` parameter selects how the function authenticates to the Event Hub and the source/cursor storage accounts.
+
+- **`Managed Identity`** (default): no secrets are stored. The function authenticates with its system-assigned identity and the template grants the required RBAC roles:
+  - **`Azure Event Hubs Data Receiver`** on the Event Hub namespace — so the trigger can receive messages.
+  - **`Storage Blob Data Reader`** on the source storage account — so the forwarder can read the VNet Flow Log blobs.
+  - The cursor table uses the **`Storage Table Data Contributor`** role the function already holds on its own storage account.
+
+  In this mode the connection strings are replaced by service-endpoint settings (`EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace` + `EVENTHUB_CONSUMER_CONNECTION__credential=managedidentity`, `SOURCE_STORAGE_BLOB_SERVICE_URI`, `CURSOR_STORAGE_TABLE_SERVICE_URI`). The `__credential=managedidentity` setting is required on the Flex Consumption plan so the host and scale controller authenticate the Event Hub trigger via the managed identity.
+- **`Local Authentication`**: the function uses shared-key connection strings (`EVENTHUB_CONSUMER_CONNECTION`, `SOURCE_STORAGE_CONNECTION`, `CURSOR_STORAGE_CONNECTION`). Use this when the deploying principal cannot grant the role assignments Managed Identity requires — for example on a bring-your-own flow-logs storage account where the deployer lacks `roleAssignments/write`.
+
+  Deploy with Local Authentication by adding `authenticationMode='Local Authentication'` to the `--parameters` of either deployment command above.
 
 ## Configuration
 
@@ -93,10 +108,12 @@ The function uses the following environment variables (automatically configured 
 | Variable | Description |
 |----------|-------------|
 | `NR_LICENSE_KEY` | New Relic Ingest License Key |
-| `SOURCE_STORAGE_CONNECTION` | Connection string for storage account containing VNet flow logs |
-| `CURSOR_STORAGE_CONNECTION` | Connection string for storage account used for cursor tracking |
-| `EVENTHUB_CONSUMER_CONNECTION` | Event Hub connection string with Listen permission |
 | `EVENTHUB_NAME` | Name of the Event Hub |
+| `SOURCE_STORAGE_CONNECTION` | Connection string for the storage account containing VNet flow logs |
+| `CURSOR_STORAGE_CONNECTION` | Connection string for the storage account used for cursor tracking |
+| `EVENTHUB_CONSUMER_CONNECTION` | Event Hub connection string with Listen permission |
+
+> In `Managed Identity` mode the three connection strings above are replaced by `SOURCE_STORAGE_BLOB_SERVICE_URI`, `CURSOR_STORAGE_TABLE_SERVICE_URI`, and `EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace`. See [Authentication mode](#authentication-mode).
 
 #### Optional
 
@@ -106,6 +123,7 @@ The function uses the following environment variables (automatically configured 
 | `NR_TAGS` | Custom tags (semicolon-separated `key:value` pairs) | (empty) |
 | `NR_MAX_RETRIES` | Max retries for failed NR requests | `3` |
 | `NR_RETRY_INTERVAL` | Retry interval in milliseconds | `2000` |
+| `AUTHENTICATION_MODE` | `Local Authentication` or `Managed Identity` | `Managed Identity` |
 | `EVENTHUB_CONSUMER_GROUP` | Event Hub consumer group | `$Default` |
 | `CURSOR_RETENTION_HOURS` | Hours to retain cursor entries | `48` |
 | `CURSOR_CLEANUP_SCHEDULE` | Cron schedule for cursor cleanup | `0 0 3 * * *` (3 AM daily) |

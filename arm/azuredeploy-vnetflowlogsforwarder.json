@@ -9,6 +9,17 @@
                 "description": "Required. New Relic Ingest License Key."
             }
         },
+        "authenticationMode": {
+            "type": "string",
+            "defaultValue": "Managed Identity",
+            "allowedValues": [
+                "Local Authentication",
+                "Managed Identity"
+            ],
+            "metadata": {
+                "description": "Optional. Authentication method the function uses to connect to the Event Hub and storage accounts. Use 'Managed Identity' (default) for keyless authentication using the function's system-assigned identity, or 'Local Authentication' to connect via shared-key connection strings."
+            }
+        },
         "flowLogsStorageAccountName": {
             "type": "string",
             "defaultValue": "",
@@ -128,6 +139,8 @@
         "websiteContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'de139f84-1756-47ae-9be6-808fbbe84772')]",
         "storageFileDataPrivilegedContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69566ab7-960f-475b-8e7c-b3118f30c6bd')]",
         "eventHubsDataSenderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975')]",
+        "eventHubsDataReceiverRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a638d3c7-ab3a-418d-83e6-5f17a39d4fde')]",
+        "storageBlobDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2a2b9908-6ea1-4ae2-8e65-a410df84e7d1')]",
         "vnetFlowLogsForwarderFunctionArtifact": "https://github.com/newrelic/azure-vnet-flow-logs/releases/latest/download/VNetFlowForwarder.zip",
 
         "virtualNetworkName": "[concat('nrvnetflowlogs-vnet-', variables('uniqueResourceNameSuffix'))]",
@@ -171,7 +184,97 @@
                 "tier": "FlexConsumption",
                 "name": "FC1"
             }
-        }
+        },
+
+        "useManagedIdentity": "[equals(parameters('authenticationMode'), 'Managed Identity')]",
+        "baseAppSettings": [
+            {
+                "name": "AzureWebJobsStorage__accountName",
+                "value": "[variables('functionStorageAccountName')]"
+            },
+            {
+                "name": "AUTHENTICATION_MODE",
+                "value": "[parameters('authenticationMode')]"
+            },
+            {
+                "name": "EVENTHUB_NAME",
+                "value": "[variables('eventHubName')]"
+            },
+            {
+                "name": "EVENTHUB_CONSUMER_GROUP",
+                "value": "[variables('eventHubConsumerGroupName')]"
+            },
+            {
+                "name": "CURSOR_RETENTION_HOURS",
+                "value": "48"
+            },
+            {
+                "name": "CURSOR_CLEANUP_SCHEDULE",
+                "value": "0 0 3 * * *"
+            },
+            {
+                "name": "MAX_CONSECUTIVE_FAILURES",
+                "value": "5"
+            },
+            {
+                "name": "NR_LICENSE_KEY",
+                "value": "[parameters('newRelicIngestLicenseKey')]"
+            },
+            {
+                "name": "NR_ENDPOINT",
+                "value": "[parameters('newRelicEndpoint')]"
+            },
+            {
+                "name": "NR_TAGS",
+                "value": "[parameters('newRelicTags')]"
+            },
+            {
+                "name": "NR_MAX_RETRIES",
+                "value": "[string(parameters('maxRetries'))]"
+            },
+            {
+                "name": "NR_RETRY_INTERVAL",
+                "value": "[string(parameters('retryInterval'))]"
+            },
+            {
+                "name": "FUNCTIONS_EXTENSION_VERSION",
+                "value": "~4"
+            },
+            {
+                "name": "AzureFunctionsJobHost__logging__logLevel__default",
+                "value": "[parameters('functionLogLevel')]"
+            },
+            {
+                "name": "AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize",
+                "value": "[string(parameters('maxEventBatchSize'))]"
+            },
+            {
+                "name": "AzureFunctionsJobHost__extensions__eventHubs__minEventBatchSize",
+                "value": "[string(parameters('minEventBatchSize'))]"
+            },
+            {
+                "name": "AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime",
+                "value": "[parameters('maxWaitTime')]"
+            }
+        ],
+        "managedIdentityAppSettings": [
+            {
+                "name": "EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace",
+                "value": "[concat(variables('eventHubNamespaceName'), '.', variables('serviceBusDnsSuffix')[environment().name])]"
+            },
+            {
+                "name": "EVENTHUB_CONSUMER_CONNECTION__credential",
+                "value": "managedidentity"
+            },
+            {
+                "name": "SOURCE_STORAGE_BLOB_SERVICE_URI",
+                "value": "[concat('https://', variables('flowLogsStorageAccountNameResolved'), '.blob.', environment().suffixes.storage)]"
+            },
+            {
+                "name": "CURSOR_STORAGE_TABLE_SERVICE_URI",
+                "value": "[concat('https://', variables('functionStorageAccountName'), '.table.', environment().suffixes.storage)]"
+            }
+        ]
     },
     "resources": [
         {
@@ -400,84 +503,7 @@
                     }
                 },
                 "siteConfig": {
-                    "appSettings": [
-                        {
-                            "name": "AzureWebJobsStorage__accountName",
-                            "value": "[variables('functionStorageAccountName')]"
-                        },
-                        {
-                            "name": "EVENTHUB_NAME",
-                            "value": "[variables('eventHubName')]"
-                        },
-                        {
-                            "name": "EVENTHUB_CONSUMER_CONNECTION",
-                            "value": "[listKeys(resourceId('Microsoft.EventHub/namespaces/authorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2021-11-01').primaryConnectionString]"
-                        },
-                        {
-                            "name": "EVENTHUB_CONSUMER_GROUP",
-                            "value": "[variables('eventHubConsumerGroupName')]"
-                        },
-                        {
-                            "name": "SOURCE_STORAGE_CONNECTION",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                        },
-                        {
-                            "name": "CURSOR_STORAGE_CONNECTION",
-                            "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                        },
-                        {
-                            "name": "CURSOR_RETENTION_HOURS",
-                            "value": "48"
-                        },
-                        {
-                            "name": "CURSOR_CLEANUP_SCHEDULE",
-                            "value": "0 0 3 * * *"
-                        },
-                        {
-                            "name": "MAX_CONSECUTIVE_FAILURES",
-                            "value": "5"
-                        },
-                        {
-                            "name": "NR_LICENSE_KEY",
-                            "value": "[parameters('newRelicIngestLicenseKey')]"
-                        },
-                        {
-                            "name": "NR_ENDPOINT",
-                            "value": "[parameters('newRelicEndpoint')]"
-                        },
-                        {
-                            "name": "NR_TAGS",
-                            "value": "[parameters('newRelicTags')]"
-                        },
-                        {
-                            "name": "NR_MAX_RETRIES",
-                            "value": "[string(parameters('maxRetries'))]"
-                        },
-                        {
-                            "name": "NR_RETRY_INTERVAL",
-                            "value": "[string(parameters('retryInterval'))]"
-                        },
-                        {
-                            "name": "FUNCTIONS_EXTENSION_VERSION",
-                            "value": "~4"
-                        },
-                        {
-                            "name": "AzureFunctionsJobHost__logging__logLevel__default",
-                            "value": "[parameters('functionLogLevel')]"
-                        },
-                        {
-                            "name": "AzureFunctionsJobHost__extensions__eventHubs__maxEventBatchSize",
-                            "value": "[string(parameters('maxEventBatchSize'))]"
-                        },
-                        {
-                            "name": "AzureFunctionsJobHost__extensions__eventHubs__minEventBatchSize",
-                            "value": "[string(parameters('minEventBatchSize'))]"
-                        },
-                        {
-                            "name": "AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime",
-                            "value": "[parameters('maxWaitTime')]"
-                        }
-                    ],
+                    "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2021-11-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2023-05-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
                     "ftpsState": "Disabled"
                 }
             }
@@ -524,6 +550,40 @@
             "properties": {
                 "roleDefinitionId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '0a9a7e1f-b9d0-4cc4-a60d-0319b160aaa3')]",
                 "principalId": "[reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'Full').identity.principalId]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "comments": "Managed Identity mode: allow the function to receive Event Hub messages without a shared-access-key connection string.",
+            "condition": "[variables('useManagedIdentity')]",
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), resourceId('Microsoft.Web/sites', variables('functionAppName')), 'EventHubsDataReceiver')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+                "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
+            ],
+            "scope": "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]",
+            "properties": {
+                "roleDefinitionId": "[variables('eventHubsDataReceiverRoleId')]",
+                "principalId": "[if(variables('useManagedIdentity'), reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'Full').identity.principalId, '')]",
+                "principalType": "ServicePrincipal"
+            }
+        },
+        {
+            "comments": "Managed Identity mode: allow the function to read VNet Flow Log blobs from the source storage account without a shared-key connection string.",
+            "condition": "[variables('useManagedIdentity')]",
+            "type": "Microsoft.Authorization/roleAssignments",
+            "apiVersion": "2022-04-01",
+            "name": "[guid(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), resourceId('Microsoft.Web/sites', variables('functionAppName')), 'StorageBlobDataReader')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]",
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]"
+            ],
+            "scope": "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
+            "properties": {
+                "roleDefinitionId": "[variables('storageBlobDataReaderRoleId')]",
+                "principalId": "[if(variables('useManagedIdentity'), reference(resourceId('Microsoft.Web/sites', variables('functionAppName')), '2023-12-01', 'Full').identity.principalId, '')]",
                 "principalType": "ServicePrincipal"
             }
         },

@@ -10,19 +10,32 @@
 
 const crypto = require('crypto');
 const { TableClient } = require('@azure/data-tables');
+const { DefaultAzureCredential } = require('@azure/identity');
 const config = require('./config');
 
 let tableClient = null;
 
 /**
  * Get or create the Table Storage client (lazy singleton).
+ *
+ * In Managed Identity mode, authenticates to the cursor table via the
+ * function's managed identity using the table service endpoint. Otherwise
+ * uses a shared-key connection string.
  */
 function getTableClient() {
   if (!tableClient) {
-    tableClient = TableClient.fromConnectionString(
-      config.cursorStorageConnection,
-      config.cursorTableName
-    );
+    if (config.useManagedIdentity()) {
+      tableClient = new TableClient(
+        config.cursorStorageTableServiceUri,
+        config.cursorTableName,
+        new DefaultAzureCredential()
+      );
+    } else {
+      tableClient = TableClient.fromConnectionString(
+        config.cursorStorageConnection,
+        config.cursorTableName
+      );
+    }
   }
   return tableClient;
 }

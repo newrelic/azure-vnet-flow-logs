@@ -47,6 +47,7 @@
     "@azure/data-tables": "^13.3.2",
     "@azure/event-hubs": "^5.12.2",
     "@azure/functions": "^4.11.2",
+    "@azure/identity": "^4.13.1",
     "@azure/storage-blob": "^12.31.0",
     "axios": "^1.18.1",
     "axios-retry": "^4.1.0"

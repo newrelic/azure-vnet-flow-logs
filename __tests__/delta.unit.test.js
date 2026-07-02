@@ -4,7 +4,9 @@ require('../testSetup');
 
 const { Readable } = require('stream');
 const { BlobServiceClient } = require('@azure/storage-blob');
+const { DefaultAzureCredential } = require('@azure/identity');
 const delta = require('../VNetFlowForwarder/delta');
+const config = require('../VNetFlowForwarder/config');
 
 // Azure flow-log block ids: opener "A0…", data "D…", trailing closer "Z0…".
 const b64 = (s) => Buffer.from(s, 'latin1').toString('base64');
@@ -33,6 +35,37 @@ function mockBlob({ blocks, data = '{}' }) {
 }
 
 describe('Delta', () => {
+  describe('client construction', () => {
+    afterEach(() => {
+      delta.resetClient();
+      jest.clearAllMocks();
+      config.authenticationMode = 'Local Authentication';
+    });
+
+    it('uses a connection string in Local Authentication mode', async () => {
+      config.authenticationMode = 'Local Authentication';
+      // getBlockList triggers lazy client creation (the bare mock rejects;
+      // we only care that the client was constructed correctly).
+      await delta.getBlockList('container', 'blob').catch(() => {});
+      expect(BlobServiceClient.fromConnectionString).toHaveBeenCalledWith(
+        config.sourceStorageConnection
+      );
+      expect(BlobServiceClient).not.toHaveBeenCalled();
+    });
+
+    it('uses DefaultAzureCredential against the blob endpoint in Managed Identity mode', async () => {
+      config.authenticationMode = 'Managed Identity';
+      config.sourceStorageBlobServiceUri = 'https://src.blob.core.windows.net';
+      await delta.getBlockList('container', 'blob').catch(() => {});
+      expect(BlobServiceClient).toHaveBeenCalledWith(
+        'https://src.blob.core.windows.net',
+        expect.any(Object)
+      );
+      expect(DefaultAzureCredential).toHaveBeenCalled();
+      expect(BlobServiceClient.fromConnectionString).not.toHaveBeenCalled();
+    });
+  });
+
   describe('downloadDelta — append to the same PT1H.json blob', () => {
     afterEach(() => jest.clearAllMocks());
 

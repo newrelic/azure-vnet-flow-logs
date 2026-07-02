@@ -3,12 +3,44 @@
 require('../testSetup');
 
 const { TableClient } = require('@azure/data-tables');
+const { DefaultAzureCredential } = require('@azure/identity');
 const cursor = require('../VNetFlowForwarder/cursor');
+const config = require('../VNetFlowForwarder/config');
 
 describe('Cursor', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     cursor.resetClient();
+  });
+
+  describe('client construction', () => {
+    afterEach(() => {
+      cursor.resetClient();
+      config.authenticationMode = 'Local Authentication';
+    });
+
+    it('uses a connection string in Local Authentication mode', () => {
+      config.authenticationMode = 'Local Authentication';
+      cursor._getTableClient();
+      expect(TableClient.fromConnectionString).toHaveBeenCalledWith(
+        config.cursorStorageConnection,
+        config.cursorTableName
+      );
+      expect(TableClient).not.toHaveBeenCalled();
+    });
+
+    it('uses DefaultAzureCredential against the table endpoint in Managed Identity mode', () => {
+      config.authenticationMode = 'Managed Identity';
+      config.cursorStorageTableServiceUri = 'https://fn.table.core.windows.net';
+      cursor._getTableClient();
+      expect(TableClient).toHaveBeenCalledWith(
+        'https://fn.table.core.windows.net',
+        config.cursorTableName,
+        expect.any(Object)
+      );
+      expect(DefaultAzureCredential).toHaveBeenCalled();
+      expect(TableClient.fromConnectionString).not.toHaveBeenCalled();
+    });
   });
 
   describe('encodeKeys', () => {

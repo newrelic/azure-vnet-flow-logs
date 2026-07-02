@@ -19,13 +19,27 @@ const config = {
   nrMaxRetries: _parseInt(process.env.NR_MAX_RETRIES, 3),
   nrRetryInterval: _parseInt(process.env.NR_RETRY_INTERVAL, 2000),
 
-  // Azure Storage
+  // Authentication
+  // 'Local Authentication' uses shared-key connection strings (default).
+  // 'Managed Identity' authenticates via the function's system-assigned
+  // identity, leaving no secrets in app settings.
+  authenticationMode: process.env.AUTHENTICATION_MODE || 'Local Authentication',
+
+  // Azure Storage — Local Authentication (connection strings)
   sourceStorageConnection: process.env.SOURCE_STORAGE_CONNECTION || '',
   cursorStorageConnection: process.env.CURSOR_STORAGE_CONNECTION || '',
   cursorTableName: 'nrvnetflowlogscursors',
 
+  // Azure Storage — Managed Identity (service endpoints)
+  sourceStorageBlobServiceUri:
+    process.env.SOURCE_STORAGE_BLOB_SERVICE_URI || '',
+  cursorStorageTableServiceUri:
+    process.env.CURSOR_STORAGE_TABLE_SERVICE_URI || '',
+
   // Event Hub
   eventhubConnection: process.env.EVENTHUB_CONSUMER_CONNECTION || '',
+  eventhubFullyQualifiedNamespace:
+    process.env.EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace || '',
   eventhubName: process.env.EVENTHUB_NAME || '',
   eventhubConsumerGroup: process.env.EVENTHUB_CONSUMER_GROUP || '$Default',
 
@@ -43,6 +57,15 @@ const config = {
 
   // Version (from package.json)
   version: require('../package.json').version,
+};
+
+/**
+ * Returns true when the forwarder should authenticate to Azure data planes
+ * (Event Hub, source blobs, cursor table) using the function's managed
+ * identity rather than shared-key connection strings.
+ */
+config.useManagedIdentity = function () {
+  return this.authenticationMode === 'Managed Identity';
 };
 
 /**
@@ -69,20 +92,40 @@ config.validate = function () {
       'Missing NR_LICENSE_KEY app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
-  if (!this.sourceStorageConnection) {
-    throw new Error(
-      'Missing SOURCE_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
-    );
-  }
-  if (!this.cursorStorageConnection) {
-    throw new Error(
-      'Missing CURSOR_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
-    );
-  }
-  if (!this.eventhubConnection) {
-    throw new Error(
-      'Missing EVENTHUB_CONSUMER_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
-    );
+  if (this.useManagedIdentity()) {
+    // Managed Identity mode: service endpoints replace connection strings.
+    if (!this.sourceStorageBlobServiceUri) {
+      throw new Error(
+        'Missing SOURCE_STORAGE_BLOB_SERVICE_URI app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.cursorStorageTableServiceUri) {
+      throw new Error(
+        'Missing CURSOR_STORAGE_TABLE_SERVICE_URI app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.eventhubFullyQualifiedNamespace) {
+      throw new Error(
+        'Missing EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+  } else {
+    // Local Authentication mode: shared-key connection strings.
+    if (!this.sourceStorageConnection) {
+      throw new Error(
+        'Missing SOURCE_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.cursorStorageConnection) {
+      throw new Error(
+        'Missing CURSOR_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.eventhubConnection) {
+      throw new Error(
+        'Missing EVENTHUB_CONSUMER_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
   }
   if (!this.eventhubName) {
     throw new Error(
