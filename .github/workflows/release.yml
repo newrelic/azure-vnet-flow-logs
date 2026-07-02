@@ -16,6 +16,9 @@ env:
 jobs:
   job-generate-third-party-notices:
     runs-on: ubuntu-latest
+    concurrency:
+      group: generate-third-party-notices
+      cancel-in-progress: true
     permissions:
       contents: write
       pull-requests: write
