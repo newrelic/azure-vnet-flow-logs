@@ -47,9 +47,9 @@ param functionLogLevel string = 'Information'
 ])
 param eventHubScalingMode string = 'Basic'
 
-@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 100.')
+@description('Optional. Maximum number of Event Grid blob-created notifications delivered to the function in a single invocation. Each notification triggers a blob download, parse, and New Relic delivery, so this is blobs-per-invocation (not log events). Default is 10.')
 @minValue(1)
-param maxEventBatchSize int = 100
+param maxEventBatchSize int = 10
 
 @description('Optional. Minimum number of Event Grid blob-created notifications delivered to the function in a single invocation. The trigger waits to accumulate this many notifications (or until maxWaitTime elapses) before invoking, avoiding a separate invocation per single event. Default is 5.')
 @minValue(1)
@@ -227,6 +227,7 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
   }
   properties: {
     minimumTlsVersion: '1.2'
+    publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     isAutoInflateEnabled: (eventHubScalingMode == 'Enterprise')
     maximumThroughputUnits: (eventHubScalingMode == 'Enterprise' ? 40 : 0)
   }
@@ -902,14 +903,12 @@ resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/
   }
 }
 
-// Explicit Allow rule set so Azure's PE-attach flow doesn't implicitly try to flip the namespace
-// to a Deny rule set (which then fails validation: Deny + zero IP/VNet rules is rejected).
 resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2021-11-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubNamespace_resource
   name: 'default'
   properties: {
-    publicNetworkAccess: 'Enabled'
-    defaultAction: 'Allow'
+    publicNetworkAccess: 'Disabled'
+    defaultAction: 'Deny'
     trustedServiceAccessEnabled: true
   }
 }
@@ -1007,7 +1006,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
         value: resourceGroup().name
       }
     ]
-    scriptContent: 'set -euo pipefail\n\necho \'Downloading package via python urllib (curl not preinstalled, python is)...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip (Flex-supported path)...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n'
+    scriptContent: 'set -euo pipefail\n\necho \'Downloading package...\'\npython3 -c "import os, urllib.request; urllib.request.urlretrieve(os.environ[\'ZIP_URL\'], \'/tmp/package.zip\')"\nls -la /tmp/package.zip\n\necho \'Deploying via az functionapp deployment source config-zip...\'\naz functionapp deployment source config-zip \\\n  --resource-group "$RESOURCE_GROUP" \\\n  --name "$FUNCTION_APP" \\\n  --src /tmp/package.zip \\\n  --build-remote false \\\n  --timeout 300\n'
   }
   dependsOn: [
     functionApp
