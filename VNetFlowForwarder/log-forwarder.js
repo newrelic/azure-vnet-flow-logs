@@ -193,13 +193,18 @@ async function processEvent(event, context, cursorData) {
 
   // Step 5: Transform records into NR log entries
   const pathMetadata = parser.extractMetadataFromPath(blobName);
-  const logEntries = parser.transformRecords(records, pathMetadata);
-  const invalidTimestampCount = logEntries.filter(
-    (entry) => entry.attributes?.timestampParseFallback
-  ).length;
-  if (invalidTimestampCount > 0) {
+  const { logEntries, fallbackCount } = parser.transformRecords(
+    records,
+    pathMetadata
+  );
+
+  // Surface invalid-timestamp fallbacks to the Function's own logs for
+  // troubleshooting. This stays server-side (Azure Monitor / App Insights) and
+  // is intentionally not attached to any log entry, so nothing extra is sent to
+  // New Relic.
+  if (fallbackCount > 0) {
     context.warn(
-      `Consumer: ${invalidTimestampCount} flow tuples had invalid timestamps for ${blobPath}; fallback ingest-time timestamps were used.`
+      `Consumer: ${fallbackCount} flow tuples had invalid timestamps for ${blobPath}; fallback ingest-time timestamps were used.`
     );
   }
 
