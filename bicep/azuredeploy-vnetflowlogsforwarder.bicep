@@ -136,7 +136,7 @@ var localAuthAppSettings = [
   }
   {
     name: 'SOURCE_STORAGE_CONNECTION'
-    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2023-05-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2024-01-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
   }
   {
     name: 'CURSOR_STORAGE_CONNECTION'
@@ -181,7 +181,7 @@ var flexConsumptionASP = {
   }
 }
 
-resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2023-05-01' = if (createNewFlowLogsStorage) {
+resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2024-01-01' = if (createNewFlowLogsStorage) {
   name: resolvedFlowLogsStorageName
   location: effectiveLocation
   sku: {
@@ -213,11 +213,11 @@ resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2
 // Symbolic reference to the source storage account so a role assignment can be
 // scoped to it in Managed Identity mode, whether it is newly created here or a
 // pre-existing account named via sourceStorageAccountName.
-resource flowLogsStorageRef 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+resource flowLogsStorageRef 'Microsoft.Storage/storageAccounts@2024-01-01' existing = {
   name: resolvedFlowLogsStorageName
 }
 
-resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' = {
+resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2024-01-01' = {
   name: eventHubNamespaceName
   location: effectiveLocation
   sku: {
@@ -233,7 +233,7 @@ resource eventHubNamespace_resource 'Microsoft.EventHub/namespaces@2021-11-01' =
   }
 }
 
-resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs@2021-11-01' = {
+resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs@2024-01-01' = {
   parent: eventHubNamespace_resource
   name: resolvedEventHubName
   properties: {
@@ -242,13 +242,13 @@ resource eventHubNamespaceName_eventHub 'Microsoft.EventHub/namespaces/eventhubs
   }
 }
 
-resource eventHubNamespaceName_eventHubName_eventHubConsumerGroup 'Microsoft.EventHub/namespaces/eventhubs/consumergroups@2021-11-01' = {
+resource eventHubNamespaceName_eventHubName_eventHubConsumerGroup 'Microsoft.EventHub/namespaces/eventhubs/consumergroups@2024-01-01' = {
   parent: eventHubNamespaceName_eventHub
   name: eventHubConsumerGroupName
   properties: {}
 }
 
-resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/AuthorizationRules@2021-11-01' = {
+resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/AuthorizationRules@2024-01-01' = {
   parent: eventHubNamespace_resource
   name: eventHubAuthRuleName
   properties: {
@@ -258,7 +258,7 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
   }
 }
 
-resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
+resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2025-02-15' = {
   name: resolvedSystemTopicName
   location: effectiveLocation
   identity: {
@@ -270,7 +270,7 @@ resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2021-12-01' = {
   }
 }
 
-resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
+resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = {
   name: functionStorageAccountName
   location: effectiveLocation
   sku: {
@@ -311,13 +311,13 @@ resource functionStorageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' =
   }
 }
 
-resource functionStorageAccountName_default 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+resource functionStorageAccountName_default 'Microsoft.Storage/storageAccounts/blobServices@2024-01-01' = {
   parent: functionStorageAccount
   name: 'default'
   properties: {}
 }
 
-resource functionStorageAccountName_default_deployments 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+resource functionStorageAccountName_default_deployments 'Microsoft.Storage/storageAccounts/blobServices/containers@2024-01-01' = {
   parent: functionStorageAccountName_default
   name: 'deployments'
   properties: {
@@ -325,19 +325,19 @@ resource functionStorageAccountName_default_deployments 'Microsoft.Storage/stora
   }
 }
 
-resource functionStorageTableServices 'Microsoft.Storage/storageAccounts/tableServices@2022-09-01' = {
+resource functionStorageTableServices 'Microsoft.Storage/storageAccounts/tableServices@2024-01-01' = {
   parent: functionStorageAccount
   name: 'default'
   properties: {}
 }
 
-resource cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2022-09-01' = {
+resource cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@2024-01-01' = {
   parent: functionStorageTableServices
   name: cursorTableName
   properties: {}
 }
 
-resource servicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
+resource servicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   name: servicePlanName
   location: effectiveLocation
   kind: flexConsumptionASP.kind
@@ -345,7 +345,7 @@ resource servicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   sku: flexConsumptionASP.sku
 }
 
-resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
+resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
   name: functionAppName
   location: effectiveLocation
   kind: 'functionapp,linux'
@@ -448,6 +448,8 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           value: maxWaitTime
         }
       ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings)
+      minTlsVersion: '1.2'
+      scmMinTlsVersion: '1.2'
       ftpsState: 'Disabled'
     }
   }
@@ -527,7 +529,7 @@ resource functionAppSourceStorageBlobDataReaderAssignment 'Microsoft.Authorizati
   ]
 }
 
-resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+resource deploymentIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: deploymentIdentityName
   location: effectiveLocation
 }
@@ -567,7 +569,7 @@ resource eventGridSystemTopicEventHubsDataSenderAssignment 'Microsoft.Authorizat
 
 // ===== Private networking (conditional on disablePublicAccessToStorageAccount) =====
 
-resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: virtualNetworkName
   location: effectiveLocation
   properties: {
@@ -618,47 +620,47 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2023-09-01' = if (dis
 }
 
 // Subnet symbolic refs (existing) so the function app + deployment script can reference IDs
-resource functionsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+resource functionsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
   parent: virtualNetwork
   name: functionsSubnetName
 }
 
-resource deploymentScriptsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+resource deploymentScriptsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
   parent: virtualNetwork
   name: deploymentScriptsSubnetName
 }
 
-resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2023-09-01' existing = {
+resource privateEndpointsSubnet 'Microsoft.Network/virtualNetworks/subnets@2024-05-01' existing = {
   parent: virtualNetwork
   name: privateEndpointsSubnetName
 }
 
-resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource blobPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: blobPrivateDnsZoneName
   location: 'global'
 }
 
-resource filePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource filePrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: filePrivateDnsZoneName
   location: 'global'
 }
 
-resource queuePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource queuePrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: queuePrivateDnsZoneName
   location: 'global'
 }
 
-resource tablePrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource tablePrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: tablePrivateDnsZoneName
   location: 'global'
 }
 
-resource sitesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource sitesPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: sitesPrivateDnsZoneName
   location: 'global'
 }
 
-resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: blobPrivateDnsZone
   name: 'link'
   location: 'global'
@@ -670,7 +672,7 @@ resource blobDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLi
   }
 }
 
-resource fileDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource fileDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: filePrivateDnsZone
   name: 'link'
   location: 'global'
@@ -682,7 +684,7 @@ resource fileDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLi
   }
 }
 
-resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: queuePrivateDnsZone
   name: 'link'
   location: 'global'
@@ -694,7 +696,7 @@ resource queueDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
   }
 }
 
-resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: tablePrivateDnsZone
   name: 'link'
   location: 'global'
@@ -706,7 +708,7 @@ resource tableDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
   }
 }
 
-resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: sitesPrivateDnsZone
   name: 'link'
   location: 'global'
@@ -718,7 +720,7 @@ resource sitesDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkL
   }
 }
 
-resource functionStorageBlobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageBlobPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: functionStorageBlobPrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -737,7 +739,7 @@ resource functionStorageBlobPrivateEndpoint 'Microsoft.Network/privateEndpoints@
   }
 }
 
-resource functionStorageFilePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageFilePrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: functionStorageFilePrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -756,7 +758,7 @@ resource functionStorageFilePrivateEndpoint 'Microsoft.Network/privateEndpoints@
   }
 }
 
-resource functionStorageQueuePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageQueuePrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: functionStorageQueuePrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -775,7 +777,7 @@ resource functionStorageQueuePrivateEndpoint 'Microsoft.Network/privateEndpoints
   }
 }
 
-resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: functionStorageTablePrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -794,7 +796,7 @@ resource functionStorageTablePrivateEndpoint 'Microsoft.Network/privateEndpoints
   }
 }
 
-resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: functionAppPrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -813,7 +815,7 @@ resource functionAppPrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-
   }
 }
 
-resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageBlobPrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -831,7 +833,7 @@ resource functionStorageBlobPrivateEndpointDnsGroup 'Microsoft.Network/privateEn
   }
 }
 
-resource functionStorageFilePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageFilePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageFilePrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -849,7 +851,7 @@ resource functionStorageFilePrivateEndpointDnsGroup 'Microsoft.Network/privateEn
   }
 }
 
-resource functionStorageQueuePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageQueuePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageQueuePrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -867,7 +869,7 @@ resource functionStorageQueuePrivateEndpointDnsGroup 'Microsoft.Network/privateE
   }
 }
 
-resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionStorageTablePrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -885,7 +887,7 @@ resource functionStorageTablePrivateEndpointDnsGroup 'Microsoft.Network/privateE
   }
 }
 
-resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: functionAppPrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -903,7 +905,7 @@ resource functionAppPrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/
   }
 }
 
-resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2021-11-01' = if (disablePublicAccessToStorageAccount) {
+resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkRuleSets@2024-01-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubNamespace_resource
   name: 'default'
   properties: {
@@ -913,12 +915,12 @@ resource eventHubNamespaceNetworkRuleSet 'Microsoft.EventHub/namespaces/networkR
   }
 }
 
-resource eventHubPrivateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource eventHubPrivateDnsZone 'Microsoft.Network/privateDnsZones@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   name: eventHubPrivateDnsZoneName
   location: 'global'
 }
 
-resource eventHubDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = if (disablePublicAccessToStorageAccount) {
+resource eventHubDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2024-06-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubPrivateDnsZone
   name: 'link'
   location: 'global'
@@ -930,7 +932,7 @@ resource eventHubDnsZoneVnetLink 'Microsoft.Network/privateDnsZones/virtualNetwo
   }
 }
 
-resource eventHubNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource eventHubNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   name: eventHubNamespacePrivateEndpointName
   location: effectiveLocation
   properties: {
@@ -949,7 +951,7 @@ resource eventHubNamespacePrivateEndpoint 'Microsoft.Network/privateEndpoints@20
   }
 }
 
-resource eventHubNamespacePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2023-09-01' = if (disablePublicAccessToStorageAccount) {
+resource eventHubNamespacePrivateEndpointDnsGroup 'Microsoft.Network/privateEndpoints/privateDnsZoneGroups@2024-05-01' = if (disablePublicAccessToStorageAccount) {
   parent: eventHubNamespacePrivateEndpoint
   name: 'default'
   dependsOn: [
@@ -1020,7 +1022,7 @@ resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   ]
 }
 
-resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2021-12-01' = {
+resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2025-02-15' = {
   parent: eventGridSystemTopic
   name: resolvedSubscriptionName
   properties: {
