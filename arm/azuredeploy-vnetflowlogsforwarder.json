@@ -504,6 +504,8 @@
                 },
                 "siteConfig": {
                     "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
+                    "minTlsVersion": "1.2",
+                    "scmMinTlsVersion": "1.2",
                     "ftpsState": "Disabled"
                 }
             }

@@ -448,6 +448,8 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           value: maxWaitTime
         }
       ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings)
+      minTlsVersion: '1.2'
+      scmMinTlsVersion: '1.2'
       ftpsState: 'Disabled'
     }
   }
