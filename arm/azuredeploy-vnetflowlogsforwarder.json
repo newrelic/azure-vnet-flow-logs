@@ -361,7 +361,7 @@
             }
         },
         {
-            "comments": "User-assigned identity used by the Event Grid system topic to deliver events into the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID at the start of the deploy, letting the Data Sender role assignment propagate in Entra ID in parallel with the rest of the deploy. See docs/EVENTGRID-UAMI-MIGRATION-PLAN.md.",
+            "comments": "User-assigned identity used by the Event Grid system topic to deliver events into the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID at the start of the deploy, letting the Data Sender role assignment propagate in Entra ID in parallel with the rest of the deploy. This eliminates the identity-propagation race that a system-assigned identity on the topic would otherwise cause.",
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "apiVersion": "2024-11-30",
             "name": "[variables('eventGridDeliveryIdentityName')]",

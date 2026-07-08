@@ -265,7 +265,6 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
 // in Entra ID while the rest of the resources (namespace, private endpoints, function app,
 // storage) are still provisioning, eliminating the identity-propagation race that a
 // system-assigned identity on the topic would otherwise cause.
-// See docs/EVENTGRID-UAMI-MIGRATION-PLAN.md for details.
 resource eventGridDeliveryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: eventGridDeliveryIdentityName
   location: effectiveLocation
