@@ -361,7 +361,6 @@
             }
         },
         {
-            "comments": "User-assigned identity used by the Event Grid system topic to deliver events into the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID at the start of the deploy, letting the Data Sender role assignment propagate in Entra ID in parallel with the rest of the deploy. See docs/EVENTGRID-UAMI-MIGRATION-PLAN.md.",
             "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
             "apiVersion": "2024-11-30",
             "name": "[variables('eventGridDeliveryIdentityName')]",
@@ -639,7 +638,6 @@
             }
         },
         {
-            "comments": "Grants the Event Grid delivery UAMI the Data Sender role on the EH namespace. Not tied to the system topic's lifecycle, so it can be created early and propagate in Entra ID before the subscription is created.",
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
             "name": "[guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridDeliveryIdentityName'), 'EventHubsDataSender')]",
