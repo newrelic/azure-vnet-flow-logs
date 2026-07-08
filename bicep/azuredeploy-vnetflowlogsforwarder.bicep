@@ -79,6 +79,7 @@ var servicePlanName = 'nrvnetflowlogs-serviceplan-${uniqueResourceNameSuffix}'
 var functionAppName = 'nrvnetflowlogs-forwarder-${uniqueResourceNameSuffix}'
 var deploymentIdentityName = 'nrvnetflowlogs-deploy-id-${uniqueResourceNameSuffix}'
 var deploymentScriptName = 'nrvnetflowlogs-deploy-script-${uniqueResourceNameSuffix}'
+var eventGridDeliveryIdentityName = 'nrvnetflowlogs-eg-delivery-id-${uniqueResourceNameSuffix}'
 var websiteContributorRoleId = subscriptionResourceId(
   'Microsoft.Authorization/roleDefinitions',
   'de139f84-1756-47ae-9be6-808fbbe84772'
@@ -258,11 +259,26 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
   }
 }
 
+// User-assigned identity used by the Event Grid system topic to deliver events into
+// the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID
+// at the start of the deploy — this lets the Data Sender role assignment below propagate
+// in Entra ID while the rest of the resources (namespace, private endpoints, function app,
+// storage) are still provisioning, eliminating the identity-propagation race that a
+// system-assigned identity on the topic would otherwise cause.
+// See docs/EVENTGRID-UAMI-MIGRATION-PLAN.md for details.
+resource eventGridDeliveryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
+  name: eventGridDeliveryIdentityName
+  location: effectiveLocation
+}
+
 resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2025-02-15' = {
   name: resolvedSystemTopicName
   location: effectiveLocation
   identity: {
-    type: 'SystemAssigned'
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${eventGridDeliveryIdentity.id}': {}
+    }
   }
   properties: {
     source: flowLogsStorageAccountId
@@ -556,13 +572,15 @@ resource deploymentScriptStorageFileContributorAssignment 'Microsoft.Authorizati
   }
 }
 
-// Lets Event Grid deliver events to the Event Hub via deliveryWithResourceIdentity
+// Lets Event Grid deliver events to the Event Hub via deliveryWithResourceIdentity.
+// Grants Data Sender to the UAMI declared for EG delivery (see comment on the UAMI
+// resource for why UAMI instead of the system topic's SAMI).
 resource eventGridSystemTopicEventHubsDataSenderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: eventHubNamespace_resource
-  name: guid(eventHubNamespace_resource.id, resolvedSystemTopicName, 'EventHubsDataSender')
+  name: guid(eventHubNamespace_resource.id, eventGridDeliveryIdentityName, 'EventHubsDataSender')
   properties: {
     roleDefinitionId: eventHubsDataSenderRoleId
-    principalId: eventGridSystemTopic.identity.principalId
+    principalId: eventGridDeliveryIdentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
 }
@@ -1028,7 +1046,8 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
   properties: {
     deliveryWithResourceIdentity: {
       identity: {
-        type: 'SystemAssigned'
+        type: 'UserAssigned'
+        userAssignedIdentity: eventGridDeliveryIdentity.id
       }
       destination: {
         endpointType: 'EventHub'
