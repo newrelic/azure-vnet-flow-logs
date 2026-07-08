@@ -259,6 +259,13 @@ resource eventHubNamespaceName_eventHubAuthRule 'Microsoft.EventHub/namespaces/A
   }
 }
 
+// User-assigned identity used by the Event Grid system topic to deliver events into
+// the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID
+// at the start of the deploy — this lets the Data Sender role assignment below propagate
+// in Entra ID while the rest of the resources (namespace, private endpoints, function app,
+// storage) are still provisioning, eliminating the identity-propagation race that a
+// system-assigned identity on the topic would otherwise cause.
+// See docs/EVENTGRID-UAMI-MIGRATION-PLAN.md for details.
 resource eventGridDeliveryIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2024-11-30' = {
   name: eventGridDeliveryIdentityName
   location: effectiveLocation
@@ -565,6 +572,9 @@ resource deploymentScriptStorageFileContributorAssignment 'Microsoft.Authorizati
   }
 }
 
+// Lets Event Grid deliver events to the Event Hub via deliveryWithResourceIdentity.
+// Grants Data Sender to the UAMI declared for EG delivery (see comment on the UAMI
+// resource for why UAMI instead of the system topic's SAMI).
 resource eventGridSystemTopicEventHubsDataSenderAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: eventHubNamespace_resource
   name: guid(eventHubNamespace_resource.id, eventGridDeliveryIdentityName, 'EventHubsDataSender')
