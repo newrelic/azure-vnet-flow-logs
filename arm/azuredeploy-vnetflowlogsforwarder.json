@@ -136,6 +136,7 @@
 
         "deploymentIdentityName": "[concat('nrvnetflowlogs-deploy-id-', variables('uniqueResourceNameSuffix'))]",
         "deploymentScriptName": "[concat('nrvnetflowlogs-deploy-script-', variables('uniqueResourceNameSuffix'))]",
+        "eventGridDeliveryIdentityName": "[concat('nrvnetflowlogs-eg-delivery-id-', variables('uniqueResourceNameSuffix'))]",
         "websiteContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'de139f84-1756-47ae-9be6-808fbbe84772')]",
         "storageFileDataPrivilegedContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '69566ab7-960f-475b-8e7c-b3118f30c6bd')]",
         "eventHubsDataSenderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975')]",
@@ -360,15 +361,26 @@
             }
         },
         {
+            "comments": "User-assigned identity used by the Event Grid system topic to deliver events into the Event Hub. Declared up front (no dependencies) so its principal exists in Entra ID at the start of the deploy, letting the Data Sender role assignment propagate in Entra ID in parallel with the rest of the deploy. This eliminates the identity-propagation race that a system-assigned identity on the topic would otherwise cause.",
+            "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+            "apiVersion": "2024-11-30",
+            "name": "[variables('eventGridDeliveryIdentityName')]",
+            "location": "[variables('location')]"
+        },
+        {
             "type": "Microsoft.EventGrid/systemTopics",
             "apiVersion": "2025-02-15",
             "name": "[variables('eventGridSystemTopicName')]",
             "location": "[variables('location')]",
             "identity": {
-                "type": "SystemAssigned"
+                "type": "UserAssigned",
+                "userAssignedIdentities": {
+                    "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('eventGridDeliveryIdentityName'))]": {}
+                }
             },
             "dependsOn": [
-                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]"
+                "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('eventGridDeliveryIdentityName'))]"
             ],
             "properties": {
                 "source": "[variables('flowLogsStorageAccountId')]",
@@ -627,17 +639,18 @@
             }
         },
         {
+            "comments": "Grants the Event Grid delivery UAMI the Data Sender role on the EH namespace. Not tied to the system topic's lifecycle, so it can be created early and propagate in Entra ID before the subscription is created.",
             "type": "Microsoft.Authorization/roleAssignments",
             "apiVersion": "2022-04-01",
-            "name": "[guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridSystemTopicName'), 'EventHubsDataSender')]",
+            "name": "[guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridDeliveryIdentityName'), 'EventHubsDataSender')]",
             "dependsOn": [
-                "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
+                "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('eventGridDeliveryIdentityName'))]",
                 "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]"
             ],
             "scope": "[resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName'))]",
             "properties": {
                 "roleDefinitionId": "[variables('eventHubsDataSenderRoleId')]",
-                "principalId": "[reference(resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName')), '2025-02-15', 'Full').identity.principalId]",
+                "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('eventGridDeliveryIdentityName')), '2024-11-30', 'Full').properties.principalId]",
                 "principalType": "ServicePrincipal"
             }
         },
@@ -1181,12 +1194,13 @@
             "dependsOn": [
                 "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
                 "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]",
-                "[extensionResourceId(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridSystemTopicName'), 'EventHubsDataSender'))]"
+                "[extensionResourceId(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridDeliveryIdentityName'), 'EventHubsDataSender'))]"
             ],
             "properties": {
                 "deliveryWithResourceIdentity": {
                     "identity": {
-                        "type": "SystemAssigned"
+                        "type": "UserAssigned",
+                        "userAssignedIdentity": "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('eventGridDeliveryIdentityName'))]"
                     },
                     "destination": {
                         "endpointType": "EventHub",
