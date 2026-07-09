@@ -115,9 +115,9 @@
         "functionAppPlan": {
             "type": "string",
             "defaultValue": "FlexConsumption",
-            "allowedValues": [ "FlexConsumption" ],
+            "allowedValues": [ "FlexConsumption", "ElasticPremium", "Basic", "Consumption" ],
             "metadata": {
-                "description": "Optional. Function App hosting plan. FlexConsumption (default) is a modern serverless plan available in ~30 Azure regions as of mid-2026 and is preferred where supported. Additional plans (ElasticPremium, Basic, Consumption) will be added in subsequent releases as fallbacks for regions where FlexConsumption is not yet available."
+                "description": "Optional. Function App hosting plan. FlexConsumption (default) is preferred where supported (~30 Azure regions as of mid-2026). ElasticPremium is the recommended fallback for regions where Flex is unavailable — production or bursty workloads that need pre-warmed capacity. Basic is a cheap dedicated tier suitable for small tenants that still need private networking (max 3 instances). Consumption is a pay-per-execution tier for public dev/test workloads only — deployment will fail if combined with disablePublicAccessToStorageAccount=true."
             }
         }
     },
@@ -207,10 +207,86 @@
                         "name": "node",
                         "version": "22"
                     }
-                }
+                },
+                "siteConfigOverrides": {},
+                "extraAppSettings": [],
+                "subnetDelegation": "Microsoft.App/environments",
+                "usesRunFromPackage": false
+            },
+            "ElasticPremium": {
+                "kind": "elastic",
+                "properties": {
+                    "reserved": true,
+                    "elasticScaleEnabled": true,
+                    "maximumElasticWorkerCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 20, 4)]",
+                    "zoneRedundant": false
+                },
+                "sku": { "tier": "ElasticPremium", "name": "EP1" },
+                "functionAppConfig": null,
+                "siteConfigOverrides": {
+                    "linuxFxVersion": "Node|22",
+                    "functionsRuntimeScaleMonitoringEnabled": true
+                },
+                "extraAppSettings": [],
+                "subnetDelegation": "Microsoft.Web/serverFarms",
+                "usesRunFromPackage": true
+            },
+            "Basic": {
+                "kind": "linux",
+                "properties": { "reserved": true },
+                "sku": { "tier": "Basic", "name": "B1" },
+                "functionAppConfig": null,
+                "siteConfigOverrides": {
+                    "alwaysOn": true,
+                    "linuxFxVersion": "Node|22"
+                },
+                "extraAppSettings": [],
+                "subnetDelegation": "Microsoft.Web/serverFarms",
+                "usesRunFromPackage": true
+            },
+            "Consumption": {
+                "kind": "functionapp,linux",
+                "properties": { "reserved": true },
+                "sku": { "tier": "Dynamic", "name": "Y1" },
+                "functionAppConfig": null,
+                "siteConfigOverrides": {
+                    "linuxFxVersion": "Node|22"
+                },
+                "extraAppSettings": [
+                    {
+                        "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
+                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+                    },
+                    {
+                        "name": "WEBSITE_CONTENTSHARE",
+                        "value": "[toLower(variables('functionAppName'))]"
+                    }
+                ],
+                "subnetDelegation": "",
+                "usesRunFromPackage": true
             }
         },
         "pc": "[variables('planConfig')[parameters('functionAppPlan')]]",
+        "baseSiteConfig": {
+            "minTlsVersion": "1.2",
+            "scmMinTlsVersion": "1.2",
+            "ftpsState": "Disabled"
+        },
+        "runFromPackageSetting": "[if(variables('pc').usesRunFromPackage, createArray(createObject('name', 'WEBSITE_RUN_FROM_PACKAGE', 'value', variables('vnetFlowLogsForwarderFunctionArtifact'))), createArray())]",
+        "localAuthAppSettings": [
+            {
+                "name": "EVENTHUB_CONSUMER_CONNECTION",
+                "value": "[listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString]"
+            },
+            {
+                "name": "SOURCE_STORAGE_CONNECTION",
+                "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+            },
+            {
+                "name": "CURSOR_STORAGE_CONNECTION",
+                "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
+            }
+        ],
 
         "useManagedIdentity": "[equals(parameters('authenticationMode'), 'Managed Identity')]",
         "baseAppSettings": [
@@ -303,6 +379,21 @@
         ]
     },
     "resources": [
+        {
+            "condition": "[and(equals(parameters('functionAppPlan'), 'Consumption'), parameters('disablePublicAccessToStorageAccount'))]",
+            "type": "Microsoft.Resources/deploymentScripts",
+            "apiVersion": "2023-08-01",
+            "name": "[concat('nrvnetflowlogs-validate-plan-', variables('uniqueResourceNameSuffix'))]",
+            "location": "[variables('location')]",
+            "kind": "AzureCLI",
+            "properties": {
+                "azCliVersion": "2.61.0",
+                "timeout": "PT5M",
+                "retentionInterval": "PT1H",
+                "cleanupPreference": "OnSuccess",
+                "scriptContent": "echo 'ERROR: Consumption (Y1) plan does not support private networking. Choose ElasticPremium or Basic for a private deployment, or set disablePublicAccessToStorageAccount=false to keep Consumption on the public network.' >&2; exit 1"
+            }
+        },
         {
             "type": "Microsoft.Storage/storageAccounts",
             "apiVersion": "2024-01-01",
@@ -521,12 +612,7 @@
                 "virtualNetworkSubnetId": "[if(parameters('disablePublicAccessToStorageAccount'), variables('functionsSubnetId'), null())]",
                 "vnetRouteAllEnabled": "[parameters('disablePublicAccessToStorageAccount')]",
                 "functionAppConfig": "[variables('pc').functionAppConfig]",
-                "siteConfig": {
-                    "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
-                    "minTlsVersion": "1.2",
-                    "scmMinTlsVersion": "1.2",
-                    "ftpsState": "Disabled"
-                }
+                "siteConfig": "[union(variables('baseSiteConfig'), variables('pc').siteConfigOverrides, createObject('appSettings', concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), variables('localAuthAppSettings')), variables('pc').extraAppSettings, variables('runFromPackageSetting'))))]"
             }
         },
         {
@@ -678,14 +764,7 @@
                         "name": "[variables('functionsSubnetName')]",
                         "properties": {
                             "addressPrefix": "10.0.0.0/24",
-                            "delegations": [
-                                {
-                                    "name": "delegation",
-                                    "properties": {
-                                        "serviceName": "Microsoft.App/environments"
-                                    }
-                                }
-                            ]
+                            "delegations": "[if(empty(variables('pc').subnetDelegation), createArray(), createArray(createObject('name', 'delegation', 'properties', createObject('serviceName', variables('pc').subnetDelegation))))]"
                         }
                     },
                     {
@@ -1148,6 +1227,7 @@
             }
         },
         {
+            "condition": "[equals(parameters('functionAppPlan'), 'FlexConsumption')]",
             "type": "Microsoft.Resources/deploymentScripts",
             "apiVersion": "2023-08-01",
             "name": "[variables('deploymentScriptName')]",

@@ -61,9 +61,12 @@ param maxWaitTime string = '00:00:30'
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
-@description('Optional. Function App hosting plan. FlexConsumption (default) is a modern serverless plan available in ~30 Azure regions as of mid-2026 and is preferred where supported. Additional plans (ElasticPremium, Basic, Consumption) will be added in subsequent releases as fallbacks for regions where FlexConsumption is not yet available.')
+@description('Optional. Function App hosting plan. FlexConsumption (default) is preferred where supported (~30 Azure regions as of mid-2026). ElasticPremium is the recommended fallback for regions where Flex is unavailable — production or bursty workloads that need pre-warmed capacity. Basic is a cheap dedicated tier suitable for small tenants that still need private networking (max 3 instances). Consumption is a pay-per-execution tier for public dev/test workloads only — deployment will fail if combined with disablePublicAccessToStorageAccount=true.')
 @allowed([
   'FlexConsumption'
+  'ElasticPremium'
+  'Basic'
+  'Consumption'
 ])
 param functionAppPlan string = 'FlexConsumption'
 
@@ -206,9 +209,102 @@ var planConfig = {
         version: '22'
       }
     }
+    siteConfigOverrides: {}
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.App/environments'
+    usesRunFromPackage: false
+  }
+  ElasticPremium: {
+    kind: 'elastic'
+    properties: {
+      reserved: true
+      elasticScaleEnabled: true
+      maximumElasticWorkerCount: (eventHubScalingMode == 'Enterprise' ? 20 : 4)
+      zoneRedundant: false
+    }
+    sku: {
+      tier: 'ElasticPremium'
+      name: 'EP1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {
+      linuxFxVersion: 'Node|22'
+      functionsRuntimeScaleMonitoringEnabled: true
+    }
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.Web/serverFarms'
+    usesRunFromPackage: true
+  }
+  Basic: {
+    kind: 'linux'
+    properties: {
+      reserved: true
+    }
+    sku: {
+      tier: 'Basic'
+      name: 'B1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {
+      alwaysOn: true
+      linuxFxVersion: 'Node|22'
+    }
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.Web/serverFarms'
+    usesRunFromPackage: true
+  }
+  Consumption: {
+    kind: 'functionapp,linux'
+    properties: {
+      reserved: true
+    }
+    sku: {
+      tier: 'Dynamic'
+      name: 'Y1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {
+      linuxFxVersion: 'Node|22'
+    }
+    extraAppSettings: [
+      {
+        name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
+        value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+      }
+      {
+        name: 'WEBSITE_CONTENTSHARE'
+        value: toLower(functionAppName)
+      }
+    ]
+    subnetDelegation: ''
+    usesRunFromPackage: true
   }
 }
 var pc = planConfig[functionAppPlan]
+var baseSiteConfig = {
+  minTlsVersion: '1.2'
+  scmMinTlsVersion: '1.2'
+  ftpsState: 'Disabled'
+}
+var runFromPackageSetting = pc.usesRunFromPackage ? [
+  {
+    name: 'WEBSITE_RUN_FROM_PACKAGE'
+    value: vnetFlowLogsForwarderFunctionArtifact
+  }
+] : []
+
+resource invalidConsumptionPrivateCombo 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (functionAppPlan == 'Consumption' && disablePublicAccessToStorageAccount) {
+  name: 'nrvnetflowlogs-validate-plan-${uniqueResourceNameSuffix}'
+  location: effectiveLocation
+  kind: 'AzureCLI'
+  properties: {
+    azCliVersion: '2.61.0'
+    timeout: 'PT5M'
+    retentionInterval: 'PT1H'
+    cleanupPreference: 'OnSuccess'
+    scriptContent: 'echo \'ERROR: Consumption (Y1) plan does not support private networking. Choose ElasticPremium or Basic for a private deployment, or set disablePublicAccessToStorageAccount=false to keep Consumption on the public network.\' >&2; exit 1'
+  }
+}
 
 resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2024-01-01' = if (createNewFlowLogsStorage) {
   name: resolvedFlowLogsStorageName
@@ -402,7 +498,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     virtualNetworkSubnetId: (disablePublicAccessToStorageAccount ? functionsSubnet.id : null)
     vnetRouteAllEnabled: disablePublicAccessToStorageAccount
     functionAppConfig: pc.functionAppConfig
-    siteConfig: {
+    siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
         {
           name: 'AzureWebJobsStorage__accountName'
@@ -472,11 +568,8 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
           value: maxWaitTime
         }
-      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings)
-      minTlsVersion: '1.2'
-      scmMinTlsVersion: '1.2'
-      ftpsState: 'Disabled'
-    }
+      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, runFromPackageSetting)
+    })
   }
   dependsOn: [
     functionStorageAccountName_default_deployments
@@ -610,11 +703,11 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = if (dis
         name: functionsSubnetName
         properties: {
           addressPrefix: '10.0.0.0/24'
-          delegations: [
+          delegations: empty(pc.subnetDelegation) ? [] : [
             {
               name: 'delegation'
               properties: {
-                serviceName: 'Microsoft.App/environments'
+                serviceName: pc.subnetDelegation
               }
             }
           ]
@@ -996,7 +1089,7 @@ resource eventHubNamespacePrivateEndpointDnsGroup 'Microsoft.Network/privateEndp
   }
 }
 
-resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
+resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (functionAppPlan == 'FlexConsumption') {
   name: deploymentScriptName
   location: effectiveLocation
   kind: 'AzureCLI'
