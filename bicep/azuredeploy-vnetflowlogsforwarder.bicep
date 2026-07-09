@@ -61,6 +61,12 @@ param maxWaitTime string = '00:00:30'
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
 
+@description('Optional. Function App hosting plan. FlexConsumption (default) is a modern serverless plan available in ~30 Azure regions as of mid-2026 and is preferred where supported. Additional plans (ElasticPremium, Basic, Consumption) will be added in subsequent releases as fallbacks for regions where FlexConsumption is not yet available.')
+@allowed([
+  'FlexConsumption'
+])
+param functionAppPlan string = 'FlexConsumption'
+
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = resourceGroup().location
 var createNewFlowLogsStorage = empty(flowLogsStorageAccountName)
@@ -171,16 +177,38 @@ var functionStorageFilePrivateEndpointName = '${functionStorageAccountName}-file
 var functionStorageQueuePrivateEndpointName = '${functionStorageAccountName}-queue-pe'
 var functionStorageTablePrivateEndpointName = '${functionStorageAccountName}-table-pe'
 var functionAppPrivateEndpointName = '${functionAppName}-sites-pe'
-var flexConsumptionASP = {
-  kind: 'functionapp,linux'
-  properties: {
-    reserved: true
-  }
-  sku: {
-    tier: 'FlexConsumption'
-    name: 'FC1'
+var planConfig = {
+  FlexConsumption: {
+    kind: 'functionapp,linux'
+    properties: {
+      reserved: true
+    }
+    sku: {
+      tier: 'FlexConsumption'
+      name: 'FC1'
+    }
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: 'https://${functionStorageAccountName}.blob.${environment().suffixes.storage}/deployments'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'node'
+        version: '22'
+      }
+    }
   }
 }
+var pc = planConfig[functionAppPlan]
 
 resource flowLogsStorageAccountNameResolved 'Microsoft.Storage/storageAccounts@2024-01-01' = if (createNewFlowLogsStorage) {
   name: resolvedFlowLogsStorageName
@@ -355,9 +383,9 @@ resource cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@202
 resource servicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   name: servicePlanName
   location: effectiveLocation
-  kind: flexConsumptionASP.kind
-  properties: flexConsumptionASP.properties
-  sku: flexConsumptionASP.sku
+  kind: pc.kind
+  properties: pc.properties
+  sku: pc.sku
 }
 
 resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
@@ -373,25 +401,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     virtualNetworkSubnetId: (disablePublicAccessToStorageAccount ? functionsSubnet.id : null)
     vnetRouteAllEnabled: disablePublicAccessToStorageAccount
-    functionAppConfig: {
-      deployment: {
-        storage: {
-          type: 'blobContainer'
-          value: 'https://${functionStorageAccountName}.blob.${environment().suffixes.storage}/deployments'
-          authentication: {
-            type: 'SystemAssignedIdentity'
-          }
-        }
-      }
-      scaleAndConcurrency: {
-        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
-        instanceMemoryMB: 2048
-      }
-      runtime: {
-        name: 'node'
-        version: '22'
-      }
-    }
+    functionAppConfig: pc.functionAppConfig
     siteConfig: {
       appSettings: concat([
         {

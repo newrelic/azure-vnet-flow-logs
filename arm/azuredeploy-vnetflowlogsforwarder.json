@@ -111,6 +111,14 @@
             "metadata": {
                 "description": "Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible."
             }
+        },
+        "functionAppPlan": {
+            "type": "string",
+            "defaultValue": "FlexConsumption",
+            "allowedValues": [ "FlexConsumption" ],
+            "metadata": {
+                "description": "Optional. Function App hosting plan. FlexConsumption (default) is a modern serverless plan available in ~30 Azure regions as of mid-2026 and is preferred where supported. Additional plans (ElasticPremium, Basic, Consumption) will be added in subsequent releases as fallbacks for regions where FlexConsumption is not yet available."
+            }
         }
     },
     "variables": {
@@ -176,16 +184,33 @@
 
         "flowLogsStorageAccountId": "[resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved'))]",
 
-        "flexConsumptionASP": {
-            "kind": "functionapp,linux",
-            "properties": {
-                "reserved": true
-            },
-            "sku": {
-                "tier": "FlexConsumption",
-                "name": "FC1"
+        "planConfig": {
+            "FlexConsumption": {
+                "kind": "functionapp,linux",
+                "properties": { "reserved": true },
+                "sku": { "tier": "FlexConsumption", "name": "FC1" },
+                "functionAppConfig": {
+                    "deployment": {
+                        "storage": {
+                            "type": "blobContainer",
+                            "value": "[concat('https://', variables('functionStorageAccountName'), '.blob.', environment().suffixes.storage, '/deployments')]",
+                            "authentication": {
+                                "type": "SystemAssignedIdentity"
+                            }
+                        }
+                    },
+                    "scaleAndConcurrency": {
+                        "maximumInstanceCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 32, 4)]",
+                        "instanceMemoryMB": 2048
+                    },
+                    "runtime": {
+                        "name": "node",
+                        "version": "22"
+                    }
+                }
             }
         },
+        "pc": "[variables('planConfig')[parameters('functionAppPlan')]]",
 
         "useManagedIdentity": "[equals(parameters('authenticationMode'), 'Managed Identity')]",
         "baseAppSettings": [
@@ -466,9 +491,9 @@
             "apiVersion": "2024-11-01",
             "name": "[variables('servicePlanName')]",
             "location": "[variables('location')]",
-            "kind": "[variables('flexConsumptionASP').kind]",
-            "properties": "[variables('flexConsumptionASP').properties]",
-            "sku": "[variables('flexConsumptionASP').sku]"
+            "kind": "[variables('pc').kind]",
+            "properties": "[variables('pc').properties]",
+            "sku": "[variables('pc').sku]"
         },
         {
             "type": "Microsoft.Web/sites",
@@ -495,25 +520,7 @@
                 "publicNetworkAccess": "[if(parameters('disablePublicAccessToStorageAccount'), 'Disabled', 'Enabled')]",
                 "virtualNetworkSubnetId": "[if(parameters('disablePublicAccessToStorageAccount'), variables('functionsSubnetId'), null())]",
                 "vnetRouteAllEnabled": "[parameters('disablePublicAccessToStorageAccount')]",
-                "functionAppConfig": {
-                    "deployment": {
-                        "storage": {
-                            "type": "blobContainer",
-                            "value": "[concat('https://', variables('functionStorageAccountName'), '.blob.', environment().suffixes.storage, '/deployments')]",
-                            "authentication": {
-                                "type": "SystemAssignedIdentity"
-                            }
-                        }
-                    },
-                    "scaleAndConcurrency": {
-                        "maximumInstanceCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 32, 4)]",
-                        "instanceMemoryMB": 2048
-                    },
-                    "runtime": {
-                        "name": "node",
-                        "version": "22"
-                    }
-                },
+                "functionAppConfig": "[variables('pc').functionAppConfig]",
                 "siteConfig": {
                     "appSettings": "[concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))))]",
                     "minTlsVersion": "1.2",
