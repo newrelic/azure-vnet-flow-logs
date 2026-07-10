@@ -266,16 +266,7 @@ var planConfig = {
     siteConfigOverrides: {
       linuxFxVersion: 'Node|22'
     }
-    extraAppSettings: [
-      {
-        name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
-        value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
-      }
-      {
-        name: 'WEBSITE_CONTENTSHARE'
-        value: toLower(functionAppName)
-      }
-    ]
+    extraAppSettings: []
     subnetDelegation: ''
     usesRunFromPackage: true
   }
@@ -495,8 +486,8 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     serverFarmId: servicePlan.id
     httpsOnly: true
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
-    virtualNetworkSubnetId: (disablePublicAccessToStorageAccount ? functionsSubnet.id : null)
-    vnetRouteAllEnabled: disablePublicAccessToStorageAccount
+    virtualNetworkSubnetId: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation) ? functionsSubnet.id : null)
+    vnetRouteAllEnabled: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation))
     functionAppConfig: pc.functionAppConfig
     siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
@@ -568,10 +559,20 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
           value: maxWaitTime
         }
-      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, runFromPackageSetting)
+      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, (functionAppPlan == 'Consumption' ? [
+        {
+          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+        }
+        {
+          name: 'WEBSITE_CONTENTSHARE'
+          value: toLower(functionAppName)
+        }
+      ] : []), runFromPackageSetting)
     })
   }
   dependsOn: [
+    invalidConsumptionPrivateCombo
     functionStorageAccountName_default_deployments
     cursorTable
     functionStorageBlobPrivateEndpointDnsGroup

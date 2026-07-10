@@ -252,16 +252,7 @@
                 "siteConfigOverrides": {
                     "linuxFxVersion": "Node|22"
                 },
-                "extraAppSettings": [
-                    {
-                        "name": "WEBSITE_CONTENTAZUREFILECONNECTIONSTRING",
-                        "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-                    },
-                    {
-                        "name": "WEBSITE_CONTENTSHARE",
-                        "value": "[toLower(variables('functionAppName'))]"
-                    }
-                ],
+                "extraAppSettings": [],
                 "subnetDelegation": "",
                 "usesRunFromPackage": true
             }
@@ -273,20 +264,6 @@
             "ftpsState": "Disabled"
         },
         "runFromPackageSetting": "[if(variables('pc').usesRunFromPackage, createArray(createObject('name', 'WEBSITE_RUN_FROM_PACKAGE', 'value', variables('vnetFlowLogsForwarderFunctionArtifact'))), createArray())]",
-        "localAuthAppSettings": [
-            {
-                "name": "EVENTHUB_CONSUMER_CONNECTION",
-                "value": "[listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString]"
-            },
-            {
-                "name": "SOURCE_STORAGE_CONNECTION",
-                "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-            },
-            {
-                "name": "CURSOR_STORAGE_CONNECTION",
-                "value": "[concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)]"
-            }
-        ],
 
         "useManagedIdentity": "[equals(parameters('authenticationMode'), 'Managed Identity')]",
         "baseAppSettings": [
@@ -596,6 +573,7 @@
                 "type": "SystemAssigned"
             },
             "dependsOn": [
+                "[resourceId('Microsoft.Resources/deploymentScripts', concat('nrvnetflowlogs-validate-plan-', variables('uniqueResourceNameSuffix')))]",
                 "[resourceId('Microsoft.Web/serverfarms', variables('servicePlanName'))]",
                 "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('functionStorageAccountName'), 'default', 'deployments')]",
                 "[resourceId('Microsoft.Storage/storageAccounts/tableServices/tables', variables('functionStorageAccountName'), 'default', variables('cursorTableName'))]",
@@ -609,10 +587,10 @@
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('servicePlanName'))]",
                 "httpsOnly": true,
                 "publicNetworkAccess": "[if(parameters('disablePublicAccessToStorageAccount'), 'Disabled', 'Enabled')]",
-                "virtualNetworkSubnetId": "[if(parameters('disablePublicAccessToStorageAccount'), variables('functionsSubnetId'), null())]",
-                "vnetRouteAllEnabled": "[parameters('disablePublicAccessToStorageAccount')]",
+                "virtualNetworkSubnetId": "[if(and(parameters('disablePublicAccessToStorageAccount'), not(empty(variables('pc').subnetDelegation))), variables('functionsSubnetId'), null())]",
+                "vnetRouteAllEnabled": "[and(parameters('disablePublicAccessToStorageAccount'), not(empty(variables('pc').subnetDelegation)))]",
                 "functionAppConfig": "[variables('pc').functionAppConfig]",
-                "siteConfig": "[union(variables('baseSiteConfig'), variables('pc').siteConfigOverrides, createObject('appSettings', concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), variables('localAuthAppSettings')), variables('pc').extraAppSettings, variables('runFromPackageSetting'))))]"
+                "siteConfig": "[union(variables('baseSiteConfig'), variables('pc').siteConfigOverrides, createObject('appSettings', concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))), variables('pc').extraAppSettings, if(equals(parameters('functionAppPlan'), 'Consumption'), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(variables('functionAppName')))), createArray()), variables('runFromPackageSetting'))))]"
             }
         },
         {
