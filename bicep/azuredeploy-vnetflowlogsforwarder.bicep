@@ -30,6 +30,15 @@ param maxRetries int = 3
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
 
+@description('Optional. Function App hosting plan. FlexConsumption (default) is preferred where supported (~30 Azure regions as of mid-2026). ElasticPremium is the recommended fallback for regions where Flex is unavailable — production or bursty workloads that need pre-warmed capacity. Basic is a cheap dedicated tier suitable for small tenants that still need private networking (max 3 instances). Consumption is a pay-per-execution tier for public dev/test workloads only — deployment will fail if combined with disablePublicAccessToStorageAccount=true.')
+@allowed([
+  'FlexConsumption'
+  'ElasticPremium'
+  'Basic'
+  'Consumption'
+])
+param functionAppPlan string = 'FlexConsumption'
+
 @description('Optional. Default log level for the forwarder.')
 @allowed([
   'Trace'
@@ -60,15 +69,6 @@ param maxWaitTime string = '00:00:30'
 
 @description('Optional. When enabled, the forwarder runs inside a private virtual network with no public network access. The flow logs storage account itself is not locked down and must remain publicly accessible.')
 param disablePublicAccessToStorageAccount bool = false
-
-@description('Optional. Function App hosting plan. FlexConsumption (default) is preferred where supported (~30 Azure regions as of mid-2026). ElasticPremium is the recommended fallback for regions where Flex is unavailable — production or bursty workloads that need pre-warmed capacity. Basic is a cheap dedicated tier suitable for small tenants that still need private networking (max 3 instances). Consumption is a pay-per-execution tier for public dev/test workloads only — deployment will fail if combined with disablePublicAccessToStorageAccount=true.')
-@allowed([
-  'FlexConsumption'
-  'ElasticPremium'
-  'Basic'
-  'Consumption'
-])
-param functionAppPlan string = 'FlexConsumption'
 
 var uniqueResourceNameSuffix = uniqueString(resourceGroup().id)
 var effectiveLocation = resourceGroup().location
