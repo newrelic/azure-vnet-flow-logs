@@ -8,20 +8,34 @@
  * PT1H.json blob, enabling delta-only reads with precise tracking.
  */
 
+const crypto = require('crypto');
 const { TableClient } = require('@azure/data-tables');
+const { DefaultAzureCredential } = require('@azure/identity');
 const config = require('./config');
 
 let tableClient = null;
 
 /**
  * Get or create the Table Storage client (lazy singleton).
+ *
+ * In Managed Identity mode, authenticates to the cursor table via the
+ * function's managed identity using the table service endpoint. Otherwise
+ * uses a shared-key connection string.
  */
 function getTableClient() {
   if (!tableClient) {
-    tableClient = TableClient.fromConnectionString(
-      config.cursorStorageConnection,
-      config.cursorTableName
-    );
+    if (config.useManagedIdentity()) {
+      tableClient = new TableClient(
+        config.cursorStorageTableServiceUri,
+        config.cursorTableName,
+        new DefaultAzureCredential()
+      );
+    } else {
+      tableClient = TableClient.fromConnectionString(
+        config.cursorStorageConnection,
+        config.cursorTableName
+      );
+    }
   }
   return tableClient;
 }
@@ -39,10 +53,15 @@ function encodeKeys(blobPath) {
     (ch) => `|${ch.charCodeAt(0).toString(16)}|`
   );
 
-  // Use a fixed partition to keep queries simple; rowKey is the encoded path
+  // Azure Table Storage row key limit is 1024 bytes — hash if over threshold
+  const rowKey =
+    encoded.length > 900
+      ? 'h-' + crypto.createHash('sha256').update(blobPath).digest('hex')
+      : encoded;
+
   return {
     partitionKey: 'vnetflowlogs',
-    rowKey: encoded,
+    rowKey,
   };
 }
 
@@ -112,7 +131,7 @@ async function incrementFailure(blobPath, lastBlockId, currentFailureCount) {
     {
       partitionKey,
       rowKey,
-      lastBlockId: lastBlockId || '',
+      lastBlockId: lastBlockId || null,
       failureCount: currentFailureCount + 1,
       updatedAt: new Date().toISOString(),
     },

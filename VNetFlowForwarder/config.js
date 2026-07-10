@@ -6,36 +6,50 @@
  * Centralized environment variable access and defaults.
  */
 
+const _parseInt = (val, def) => {
+  const n = parseInt(val, 10);
+  return Number.isNaN(n) ? def : n;
+};
+
 const config = {
   // New Relic
   nrLicenseKey: process.env.NR_LICENSE_KEY || '',
-  nrInsertKey: process.env.NR_INSERT_KEY || '',
   nrEndpoint: process.env.NR_ENDPOINT || 'https://log-api.newrelic.com/log/v1',
   nrTags: process.env.NR_TAGS || '',
-  nrMaxRetries: parseInt(process.env.NR_MAX_RETRIES, 10) || 3,
-  nrRetryInterval: parseInt(process.env.NR_RETRY_INTERVAL, 10) || 2000,
+  nrMaxRetries: _parseInt(process.env.NR_MAX_RETRIES, 3),
+  nrRetryInterval: _parseInt(process.env.NR_RETRY_INTERVAL, 2000),
 
-  // Azure Storage
+  // Authentication
+  // 'Local Authentication' uses shared-key connection strings (default).
+  // 'Managed Identity' authenticates via the function's system-assigned
+  // identity, leaving no secrets in app settings.
+  authenticationMode: process.env.AUTHENTICATION_MODE || 'Local Authentication',
+
+  // Azure Storage — Local Authentication (connection strings)
   sourceStorageConnection: process.env.SOURCE_STORAGE_CONNECTION || '',
   cursorStorageConnection: process.env.CURSOR_STORAGE_CONNECTION || '',
-  cursorTableName: process.env.CURSOR_TABLE_NAME || 'nrvnetflowlogscursors',
+  cursorTableName: 'nrvnetflowlogscursors',
+
+  // Azure Storage — Managed Identity (service endpoints)
+  sourceStorageBlobServiceUri:
+    process.env.SOURCE_STORAGE_BLOB_SERVICE_URI || '',
+  cursorStorageTableServiceUri:
+    process.env.CURSOR_STORAGE_TABLE_SERVICE_URI || '',
 
   // Event Hub
   eventhubConnection: process.env.EVENTHUB_CONSUMER_CONNECTION || '',
+  eventhubFullyQualifiedNamespace:
+    process.env.EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace || '',
   eventhubName: process.env.EVENTHUB_NAME || '',
   eventhubConsumerGroup: process.env.EVENTHUB_CONSUMER_GROUP || '$Default',
 
-  // Feature toggles
-  relayEnabled: process.env.VNETFLOWLOGS_RELAY_ENABLED === 'true',
-  consumerEnabled: process.env.VNETFLOWLOGS_FORWARDER_ENABLED === 'true',
-
-  // Cursor cleanup
-  cursorCleanupEnabled: process.env.CURSOR_CLEANUP_ENABLED !== 'false',
-  cursorRetentionHours: parseInt(process.env.CURSOR_RETENTION_HOURS, 10) || 48,
+  // Cursor cleanup (always enabled)
+  cursorCleanupEnabled: true,
+  cursorRetentionHours: _parseInt(process.env.CURSOR_RETENTION_HOURS, 48),
   cursorCleanupSchedule: process.env.CURSOR_CLEANUP_SCHEDULE || '0 0 3 * * *',
 
-  // Logging
-  debugEnabled: process.env.DEBUG_ENABLED === 'true',
+  // Poison event protection
+  maxConsecutiveFailures: _parseInt(process.env.MAX_CONSECUTIVE_FAILURES, 5),
 
   // Limits
   maxPayloadSize: 1000 * 1024, // ~1 MB compressed
@@ -46,38 +60,82 @@ const config = {
 };
 
 /**
+ * Returns true when the forwarder should authenticate to Azure data planes
+ * (Event Hub, source blobs, cursor table) using the function's managed
+ * identity rather than shared-key connection strings.
+ */
+config.useManagedIdentity = function () {
+  return this.authenticationMode === 'Managed Identity';
+};
+
+/**
  * Returns the API key to use for New Relic authentication.
  */
 config.getApiKey = function () {
-  return this.nrLicenseKey || this.nrInsertKey;
+  return this.nrLicenseKey;
 };
 
 /**
  * Returns the header name for the configured key type.
  */
 config.getApiKeyHeader = function () {
-  return this.nrLicenseKey ? 'X-License-Key' : 'X-Insert-Key';
+  return 'X-License-Key';
 };
 
 /**
  * Validates that all required configuration is present.
- * Throws if critical settings are missing.
+ * Throws if required runtime app settings are missing.
  */
 config.validate = function () {
-  if (!this.nrLicenseKey && !this.nrInsertKey) {
+  if (!this.nrLicenseKey) {
     throw new Error(
-      'Missing NR_LICENSE_KEY or NR_INSERT_KEY. Configure at least one.'
+      'Missing NR_LICENSE_KEY app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
-  if (!this.sourceStorageConnection) {
+  if (this.useManagedIdentity()) {
+    // Managed Identity mode: service endpoints replace connection strings.
+    if (!this.sourceStorageBlobServiceUri) {
+      throw new Error(
+        'Missing SOURCE_STORAGE_BLOB_SERVICE_URI app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.cursorStorageTableServiceUri) {
+      throw new Error(
+        'Missing CURSOR_STORAGE_TABLE_SERVICE_URI app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.eventhubFullyQualifiedNamespace) {
+      throw new Error(
+        'Missing EVENTHUB_CONSUMER_CONNECTION__fullyQualifiedNamespace app setting. Required when AUTHENTICATION_MODE is "Managed Identity". This value is deployment-managed and must be present at runtime.'
+      );
+    }
+  } else {
+    // Local Authentication mode: shared-key connection strings.
+    if (!this.sourceStorageConnection) {
+      throw new Error(
+        'Missing SOURCE_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.cursorStorageConnection) {
+      throw new Error(
+        'Missing CURSOR_STORAGE_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
+    if (!this.eventhubConnection) {
+      throw new Error(
+        'Missing EVENTHUB_CONSUMER_CONNECTION app setting. This value is deployment-managed and must be present at runtime.'
+      );
+    }
+  }
+  if (!this.eventhubName) {
     throw new Error(
-      'Missing SOURCE_STORAGE_CONNECTION. Set the source storage account connection string.'
+      'Missing EVENTHUB_NAME app setting. This value is deployment-managed and must be present at runtime.'
     );
   }
-  if (!this.cursorStorageConnection) {
-    throw new Error(
-      'Missing CURSOR_STORAGE_CONNECTION. Set the cursor storage account connection string.'
-    );
+  try {
+    new URL(this.nrEndpoint);
+  } catch {
+    throw new Error(`NR_ENDPOINT is not a valid URL: ${this.nrEndpoint}`);
   }
 };
 

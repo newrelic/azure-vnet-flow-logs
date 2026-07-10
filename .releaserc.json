@@ -1,0 +1,21 @@
+{
+  "branches": ["main"],
+  "plugins": [
+    "@semantic-release/commit-analyzer",
+    "@semantic-release/release-notes-generator",
+    ["@semantic-release/changelog", {
+      "changelogFile": "docs/CHANGELOG.md"
+    }],
+    ["@semantic-release/npm", {
+      "npmPublish": false
+    }],
+    ["@semantic-release/exec", {
+      "prepareCmd": "npm run package"
+    }],
+    ["@semantic-release/github", {
+      "assets": [
+        {"path": "VNetFlowForwarder.zip", "label": "VNetFlowForwarder Azure ZipDeploy package (version ${nextRelease.gitTag})"}
+      ]
+    }]
+  ]
+}
