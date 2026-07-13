@@ -211,50 +211,60 @@
                 "siteConfigOverrides": {},
                 "extraAppSettings": [],
                 "subnetDelegation": "Microsoft.App/environments",
-                "usesRunFromPackage": false
+                "usesRunFromPackage": false,
+                "usesIdentityStorage": true,
+                "functionAppReserved": true
             },
             "ElasticPremium": {
                 "kind": "elastic",
                 "properties": {
-                    "reserved": true,
                     "elasticScaleEnabled": true,
                     "maximumElasticWorkerCount": "[if(equals(parameters('eventHubScalingMode'), 'Enterprise'), 20, 4)]",
+                    "perSiteScaling": true,
                     "zoneRedundant": false
                 },
                 "sku": { "tier": "ElasticPremium", "name": "EP1" },
                 "functionAppConfig": null,
-                "siteConfigOverrides": {
-                    "linuxFxVersion": "Node|22",
-                    "functionsRuntimeScaleMonitoringEnabled": true
-                },
+                "siteConfigOverrides": {},
                 "extraAppSettings": [],
                 "subnetDelegation": "Microsoft.Web/serverFarms",
-                "usesRunFromPackage": true
+                "usesRunFromPackage": true,
+                "usesIdentityStorage": false,
+                "functionAppReserved": false
             },
             "Basic": {
-                "kind": "linux",
-                "properties": { "reserved": true },
+                "kind": "app",
+                "properties": {
+                    "numberOfWorkers": 1,
+                    "targetWorkerCount": 1,
+                    "computeMode": "Dynamic",
+                    "zoneRedundant": false
+                },
                 "sku": { "tier": "Basic", "name": "B1" },
                 "functionAppConfig": null,
                 "siteConfigOverrides": {
-                    "alwaysOn": true,
-                    "linuxFxVersion": "Node|22"
+                    "alwaysOn": true
                 },
                 "extraAppSettings": [],
                 "subnetDelegation": "Microsoft.Web/serverFarms",
-                "usesRunFromPackage": true
+                "usesRunFromPackage": true,
+                "usesIdentityStorage": false,
+                "functionAppReserved": false
             },
             "Consumption": {
-                "kind": "functionapp,linux",
-                "properties": { "reserved": true },
+                "kind": "functionapp",
+                "properties": {
+                    "numberOfWorkers": 1,
+                    "computeMode": "Dynamic"
+                },
                 "sku": { "tier": "Dynamic", "name": "Y1" },
                 "functionAppConfig": null,
-                "siteConfigOverrides": {
-                    "linuxFxVersion": "Node|22"
-                },
+                "siteConfigOverrides": {},
                 "extraAppSettings": [],
                 "subnetDelegation": "",
-                "usesRunFromPackage": true
+                "usesRunFromPackage": true,
+                "usesIdentityStorage": false,
+                "functionAppReserved": false
             }
         },
         "pc": "[variables('planConfig')[parameters('functionAppPlan')]]",
@@ -263,14 +273,10 @@
             "scmMinTlsVersion": "1.2",
             "ftpsState": "Disabled"
         },
-        "runFromPackageSetting": "[if(variables('pc').usesRunFromPackage, createArray(createObject('name', 'WEBSITE_RUN_FROM_PACKAGE', 'value', variables('vnetFlowLogsForwarderFunctionArtifact'))), createArray())]",
+        "runFromPackageSetting": "[if(and(variables('pc').usesRunFromPackage, parameters('disablePublicAccessToStorageAccount')), createArray(createObject('name', 'WEBSITE_RUN_FROM_PACKAGE', 'value', variables('vnetFlowLogsForwarderFunctionArtifact'))), createArray())]",
 
         "useManagedIdentity": "[equals(parameters('authenticationMode'), 'Managed Identity')]",
         "baseAppSettings": [
-            {
-                "name": "AzureWebJobsStorage__accountName",
-                "value": "[variables('functionStorageAccountName')]"
-            },
             {
                 "name": "AUTHENTICATION_MODE",
                 "value": "[parameters('authenticationMode')]"
@@ -568,7 +574,7 @@
             "apiVersion": "2024-11-01",
             "name": "[variables('functionAppName')]",
             "location": "[variables('location')]",
-            "kind": "functionapp,linux",
+            "kind": "[if(variables('pc').functionAppReserved, 'functionapp,linux', 'functionapp')]",
             "identity": {
                 "type": "SystemAssigned"
             },
@@ -585,12 +591,25 @@
             ],
             "properties": {
                 "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('servicePlanName'))]",
+                "reserved": "[variables('pc').functionAppReserved]",
                 "httpsOnly": true,
                 "publicNetworkAccess": "[if(parameters('disablePublicAccessToStorageAccount'), 'Disabled', 'Enabled')]",
                 "virtualNetworkSubnetId": "[if(and(parameters('disablePublicAccessToStorageAccount'), not(empty(variables('pc').subnetDelegation))), variables('functionsSubnetId'), null())]",
                 "vnetRouteAllEnabled": "[and(parameters('disablePublicAccessToStorageAccount'), not(empty(variables('pc').subnetDelegation)))]",
                 "functionAppConfig": "[variables('pc').functionAppConfig]",
-                "siteConfig": "[union(variables('baseSiteConfig'), variables('pc').siteConfigOverrides, createObject('appSettings', concat(variables('baseAppSettings'), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))), variables('pc').extraAppSettings, if(equals(parameters('functionAppPlan'), 'Consumption'), createArray(createObject('name', 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'WEBSITE_CONTENTSHARE', 'value', toLower(variables('functionAppName')))), createArray()), variables('runFromPackageSetting'))))]"
+                "siteConfig": "[union(variables('baseSiteConfig'), variables('pc').siteConfigOverrides, createObject('appSettings', concat(variables('baseAppSettings'), if(equals(parameters('functionAppPlan'), 'FlexConsumption'), createArray(), createArray(createObject('name', 'FUNCTIONS_WORKER_RUNTIME', 'value', 'node'), createObject('name', 'WEBSITE_NODE_DEFAULT_VERSION', 'value', '~22'))), if(variables('pc').usesIdentityStorage, createArray(createObject('name', 'AzureWebJobsStorage__accountName', 'value', variables('functionStorageAccountName'))), createArray(createObject('name', 'AzureWebJobsStorage', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))), if(variables('useManagedIdentity'), variables('managedIdentityAppSettings'), createArray(createObject('name', 'EVENTHUB_CONSUMER_CONNECTION', 'value', listKeys(resourceId('Microsoft.EventHub/namespaces/AuthorizationRules', variables('eventHubNamespaceName'), variables('eventHubAuthRuleName')), '2024-01-01').primaryConnectionString), createObject('name', 'SOURCE_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('flowLogsStorageAccountNameResolved'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('flowLogsStorageAccountNameResolved')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)), createObject('name', 'CURSOR_STORAGE_CONNECTION', 'value', concat('DefaultEndpointsProtocol=https;AccountName=', variables('functionStorageAccountName'), ';AccountKey=', listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('functionStorageAccountName')), '2024-01-01').keys[0].value, ';EndpointSuffix=', environment().suffixes.storage)))), variables('pc').extraAppSettings, variables('runFromPackageSetting'))))]"
+            }
+        },
+        {
+            "condition": "[and(variables('pc').usesRunFromPackage, not(parameters('disablePublicAccessToStorageAccount')))]",
+            "type": "Microsoft.Web/sites/extensions",
+            "apiVersion": "2022-03-01",
+            "name": "[concat(variables('functionAppName'), '/ZipDeploy')]",
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
+            ],
+            "properties": {
+                "packageUri": "[variables('vnetFlowLogsForwarderFunctionArtifact')]"
             }
         },
         {

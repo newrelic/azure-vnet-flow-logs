@@ -146,7 +146,7 @@ var localAuthAppSettings = [
   }
   {
     name: 'SOURCE_STORAGE_CONNECTION'
-    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2024-01-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${flowLogsStorageRef.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
   }
   {
     name: 'CURSOR_STORAGE_CONNECTION'
@@ -213,13 +213,15 @@ var planConfig = {
     extraAppSettings: []
     subnetDelegation: 'Microsoft.App/environments'
     usesRunFromPackage: false
+    usesIdentityStorage: true
+    functionAppReserved: true
   }
   ElasticPremium: {
     kind: 'elastic'
     properties: {
-      reserved: true
       elasticScaleEnabled: true
       maximumElasticWorkerCount: (eventHubScalingMode == 'Enterprise' ? 20 : 4)
+      perSiteScaling: true
       zoneRedundant: false
     }
     sku: {
@@ -227,18 +229,20 @@ var planConfig = {
       name: 'EP1'
     }
     functionAppConfig: null
-    siteConfigOverrides: {
-      linuxFxVersion: 'Node|22'
-      functionsRuntimeScaleMonitoringEnabled: true
-    }
+    siteConfigOverrides: {}
     extraAppSettings: []
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
   }
   Basic: {
-    kind: 'linux'
+    kind: 'app'
     properties: {
-      reserved: true
+      numberOfWorkers: 1
+      targetWorkerCount: 1
+      computeMode: 'Dynamic'
+      zoneRedundant: false
     }
     sku: {
       tier: 'Basic'
@@ -247,28 +251,30 @@ var planConfig = {
     functionAppConfig: null
     siteConfigOverrides: {
       alwaysOn: true
-      linuxFxVersion: 'Node|22'
     }
     extraAppSettings: []
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
   }
   Consumption: {
-    kind: 'functionapp,linux'
+    kind: 'functionapp'
     properties: {
-      reserved: true
+      numberOfWorkers: 1
+      computeMode: 'Dynamic'
     }
     sku: {
       tier: 'Dynamic'
       name: 'Y1'
     }
     functionAppConfig: null
-    siteConfigOverrides: {
-      linuxFxVersion: 'Node|22'
-    }
+    siteConfigOverrides: {}
     extraAppSettings: []
     subnetDelegation: ''
     usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
   }
 }
 var pc = planConfig[functionAppPlan]
@@ -277,7 +283,7 @@ var baseSiteConfig = {
   scmMinTlsVersion: '1.2'
   ftpsState: 'Disabled'
 }
-var runFromPackageSetting = pc.usesRunFromPackage ? [
+var runFromPackageSetting = (pc.usesRunFromPackage && disablePublicAccessToStorageAccount) ? [
   {
     name: 'WEBSITE_RUN_FROM_PACKAGE'
     value: vnetFlowLogsForwarderFunctionArtifact
@@ -478,12 +484,13 @@ resource servicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
 resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
   name: functionAppName
   location: effectiveLocation
-  kind: 'functionapp,linux'
+  kind: (pc.functionAppReserved ? 'functionapp,linux' : 'functionapp')
   identity: {
     type: 'SystemAssigned'
   }
   properties: {
     serverFarmId: servicePlan.id
+    reserved: pc.functionAppReserved
     httpsOnly: true
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     virtualNetworkSubnetId: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation) ? functionsSubnet.id : null)
@@ -491,10 +498,6 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     functionAppConfig: pc.functionAppConfig
     siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
-        {
-          name: 'AzureWebJobsStorage__accountName'
-          value: functionStorageAccountName
-        }
         {
           name: 'AUTHENTICATION_MODE'
           value: authenticationMode
@@ -559,16 +562,26 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
           value: maxWaitTime
         }
-      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, (functionAppPlan == 'Consumption' ? [
+      ], (functionAppPlan == 'FlexConsumption' ? [] : [
         {
-          name: 'WEBSITE_CONTENTAZUREFILECONNECTIONSTRING'
+          name: 'FUNCTIONS_WORKER_RUNTIME'
+          value: 'node'
+        }
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~22'
+        }
+      ]), (pc.usesIdentityStorage ? [
+        {
+          name: 'AzureWebJobsStorage__accountName'
+          value: functionStorageAccountName
+        }
+      ] : [
+        {
+          name: 'AzureWebJobsStorage'
           value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
         }
-        {
-          name: 'WEBSITE_CONTENTSHARE'
-          value: toLower(functionAppName)
-        }
-      ] : []), runFromPackageSetting)
+      ]), useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, runFromPackageSetting)
     })
   }
   dependsOn: [
@@ -580,6 +593,14 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     functionStorageQueuePrivateEndpointDnsGroup
     functionStorageTablePrivateEndpointDnsGroup
   ]
+}
+
+resource functionAppZipDeploy 'Microsoft.Web/sites/extensions@2022-03-01' = if (pc.usesRunFromPackage && !disablePublicAccessToStorageAccount) {
+  parent: functionApp
+  name: 'ZipDeploy'
+  properties: {
+    packageUri: vnetFlowLogsForwarderFunctionArtifact
+  }
 }
 
 resource functionAppStorageBlobDataOwnerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
