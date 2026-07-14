@@ -1278,7 +1278,8 @@
             "dependsOn": [
                 "[resourceId('Microsoft.EventGrid/systemTopics', variables('eventGridSystemTopicName'))]",
                 "[resourceId('Microsoft.EventHub/namespaces/eventhubs', variables('eventHubNamespaceName'), variables('eventHubName'))]",
-                "[extensionResourceId(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridDeliveryIdentityName'), 'EventHubsDataSender'))]"
+                "[extensionResourceId(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), 'Microsoft.Authorization/roleAssignments', guid(resourceId('Microsoft.EventHub/namespaces', variables('eventHubNamespaceName')), variables('eventGridDeliveryIdentityName'), 'EventHubsDataSender'))]",
+                "[resourceId('Microsoft.Web/sites', variables('functionAppName'))]"
             ],
             "properties": {
                 "deliveryWithResourceIdentity": {

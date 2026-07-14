@@ -1214,5 +1214,6 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
   }
   dependsOn: [
     eventGridSystemTopicEventHubsDataSenderAssignment
+    functionApp
   ]
 }
