@@ -214,7 +214,6 @@ var planConfig = {
     subnetDelegation: 'Microsoft.App/environments'
     usesRunFromPackage: false
     usesIdentityStorage: true
-    supportsIdentityHostStorage: true
     functionAppReserved: true
   }
   ElasticPremium: {
@@ -234,7 +233,6 @@ var planConfig = {
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
     usesIdentityStorage: false
-    supportsIdentityHostStorage: true
     functionAppReserved: false
   }
   Basic: {
@@ -257,7 +255,6 @@ var planConfig = {
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
     usesIdentityStorage: false
-    supportsIdentityHostStorage: true
     functionAppReserved: false
   }
   Consumption: {
@@ -276,7 +273,6 @@ var planConfig = {
     subnetDelegation: ''
     usesRunFromPackage: true
     usesIdentityStorage: false
-    supportsIdentityHostStorage: false
     functionAppReserved: false
   }
 }
@@ -574,7 +570,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~22'
         }
-      ]), ((pc.usesIdentityStorage || (pc.supportsIdentityHostStorage && useManagedIdentity)) ? [
+      ]), ((pc.usesIdentityStorage || useManagedIdentity) ? [
         {
           name: 'AzureWebJobsStorage__accountName'
           value: functionStorageAccountName
