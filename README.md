@@ -61,7 +61,7 @@ az deployment group create \
 |-----------|----------|-------------|
 | `newRelicIngestLicenseKey` | Yes | New Relic Ingest License Key |
 | `flowLogsStorageAccountName` | No | Existing storage account where Azure writes your VNet flow logs. Leave blank to create a new one. |
-| `newRelicEndpoint` | No | NR Logs API endpoint: US (default), EU, or JP |
+| `newRelicEndpoint` | No | NR Logs API endpoint: US (default), EU, JP, or FedRAMP. FedRAMP requires a Gov-available plan (`ElasticPremium`, `Basic`, or `Consumption`) — `FlexConsumption` is not available in Azure Gov regions. |
 | `newRelicTags` | No | Custom tags for logs (e.g., `env:prod;team:network`) |
 | `maxRetries` | No | Max retries for NR delivery (default: 3) |
 | `retryInterval` | No | Retry interval in ms (default: 2000) |
@@ -158,6 +158,7 @@ This enables `context.debug()` messages while keeping host-level noise lower.
 | US | `https://log-api.newrelic.com/log/v1` |
 | EU | `https://log-api.eu.newrelic.com/log/v1` |
 | JP | `https://log-api.jp.nr-data.net/log/v1` |
+| FedRAMP | `https://gov-log-api.newrelic.com/log/v1` |
 
 ## Manual Deployment
 

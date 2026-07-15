@@ -18,9 +18,15 @@ Copilot cloud-agent onboarding guidance.
   parse/enrich → POST to New Relic Logs API.
 - Small codebase (~7 source files + ~7 unit-test files). Ships as a zipped Function
   App plus ARM and Bicep templates that provision the surrounding Azure resources.
-- Runtime: Flex Consumption plan. **Azure Government / FedRAMP is not supported**
-  because Flex Consumption is not available in Azure Gov regions — do not add
-  Gov/FedRAMP endpoints, parameters, or docs unless this constraint changes.
+- Runtime: multiple Function App hosting plans are supported, selected via the
+  `functionAppPlan` template parameter — `FlexConsumption` (default),
+  `ElasticPremium`, `Basic`, and `Consumption`. **Azure Government / FedRAMP is
+  supported only on `ElasticPremium`, `Basic`, or `Consumption`**; Flex
+  Consumption is still unavailable in Azure Gov regions, so a `FlexConsumption`
+  + Gov-region deployment will fail at provisioning time. The
+  `newRelicEndpoint` allowedValues include the FedRAMP endpoint
+  (`https://gov-log-api.newrelic.com/log/v1`); operators are responsible for
+  pairing it with a Gov-available plan.
 
 ## Layout
 
@@ -226,10 +232,9 @@ inline comments:
 ## Handling requests that conflict with these instructions
 
 If a user asks for a change that directly violates a constraint documented above —
-for example, adding an Azure Government / FedRAMP endpoint or parameter,
-reintroducing `DEBUG_ENABLED` or a similar runtime debug flag, adding back an
-`NR_INSERT_KEY` fallback, or adding a YAGNI configuration knob without a named
-caller in the same PR — do the following:
+for example, reintroducing `DEBUG_ENABLED` or a similar runtime debug flag,
+adding back an `NR_INSERT_KEY` fallback, or adding a YAGNI configuration knob
+without a named caller in the same PR — do the following:
 
 1. Decline the change.
 2. Cite the specific bullet or section in this file that forbids it.

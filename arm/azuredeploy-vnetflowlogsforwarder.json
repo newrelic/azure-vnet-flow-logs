@@ -33,7 +33,8 @@
             "allowedValues": [
                 "https://log-api.newrelic.com/log/v1",
                 "https://log-api.eu.newrelic.com/log/v1",
-                "https://log-api.jp.nr-data.net/log/v1"
+                "https://log-api.jp.nr-data.net/log/v1",
+                "https://gov-log-api.newrelic.com/log/v1"
             ],
             "metadata": {
                 "description": "Optional. The Logs API endpoint for your New Relic account region."

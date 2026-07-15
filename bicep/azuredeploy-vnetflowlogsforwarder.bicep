@@ -18,6 +18,7 @@ param flowLogsStorageAccountName string = ''
   'https://log-api.newrelic.com/log/v1'
   'https://log-api.eu.newrelic.com/log/v1'
   'https://log-api.jp.nr-data.net/log/v1'
+  'https://gov-log-api.newrelic.com/log/v1'
 ])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
