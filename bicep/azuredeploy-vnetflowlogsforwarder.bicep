@@ -13,7 +13,7 @@ param authenticationMode string = 'Managed Identity'
 @description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
 param flowLogsStorageAccountName string = ''
 
-@description('Optional. The Logs API endpoint for your New Relic account region.')
+@description('Optional. The New Relic Logs API endpoint. Select based on account region or compliance requirement. The FedRAMP endpoint requires a Gov-available hosting plan (ElasticPremium, Basic, or Consumption).')
 @allowed([
   'https://log-api.newrelic.com/log/v1'
   'https://log-api.eu.newrelic.com/log/v1'

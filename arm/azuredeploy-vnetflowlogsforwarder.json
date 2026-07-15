@@ -37,7 +37,7 @@
                 "https://gov-log-api.newrelic.com/log/v1"
             ],
             "metadata": {
-                "description": "Optional. The Logs API endpoint for your New Relic account region."
+                "description": "Optional. The New Relic Logs API endpoint. Select based on account region or compliance requirement. The FedRAMP endpoint requires a Gov-available hosting plan (ElasticPremium, Basic, or Consumption)."
             }
         },
         "newRelicTags": {
