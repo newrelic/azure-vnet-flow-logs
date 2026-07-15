@@ -192,7 +192,13 @@ teardown_with_backoff() {
   local sleep_s=10
   local max_sleep=120
   for _ in {1..10}; do
-    if ! az group show --name "${RESOURCE_GROUP}" >/dev/null 2>&1; then
+    # `az group exists` prints a clean true/false and is the authoritative check.
+    # A network/auth error also makes it fail non-zero, so on failure we don't know
+    # the group is gone - only an explicit "false" counts as deleted, otherwise we
+    # keep polling instead of risking a false "deleted" report.
+    local exists
+    exists=$(az group exists --name "${RESOURCE_GROUP}" 2>/dev/null) || exists="unknown"
+    if [[ "${exists}" == "false" ]]; then
       stack_log "Resource group deleted"
       return 0
     fi
@@ -205,5 +211,6 @@ teardown_with_backoff() {
     fi
   done
 
-  stack_log "Resource group delete still in progress"
+  stack_log "Resource group delete not confirmed after retry budget - check ${RESOURCE_GROUP} manually"
+  return 1
 }
