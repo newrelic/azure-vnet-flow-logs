@@ -44,12 +44,10 @@ or directly:
 
 ## CI
 
-`.github/workflows/run-e2e-tests.yaml` runs this suite automatically when a pull request is **approved** (`pull_request_review` → `submitted` with `state == approved`), on a monthly schedule, and via manual `workflow_dispatch`. It authenticates to Azure with OIDC (keyless), mirroring how `newrelic/aws-unified-lambda` authenticates to AWS.
+`.github/workflows/run-e2e-tests.yaml` runs this suite automatically when a pull request is **approved** (`pull_request_review` → `submitted` with `state == approved`), on a monthly schedule, and via manual `workflow_dispatch`. It authenticates to Azure with the client secret issued for the `azure-vnet-test` service principal (provisioned via `csi-shared/service-account-permissions` PR #842, credential rotated in Vault at `containers/teams/logging/production/azure-vnet/`). OIDC/federated-credential login was considered (mirroring how `newrelic/aws-unified-lambda` authenticates to AWS) but isn't supported by that provisioning platform for Azure apps, so this uses the secret it actually issues instead.
 
 Required repository secrets:
 
-- `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` — for OIDC login via `azure/login@v2`
+- `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` — for login via `azure/login@v2`
 - `NR_LICENSE_KEY`, `NR_QUERY_API_KEY`, `NR_ACCOUNT_ID` — New Relic ingest + query
 - `SLACK_WEBHOOK_URL` — failure notifications
-
-One-time Azure setup: create an App Registration (or user-assigned managed identity) with a **federated credential** trusting this repository, and grant it Contributor on the test subscription. No client secret is stored.

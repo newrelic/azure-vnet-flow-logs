@@ -2,12 +2,10 @@ name: E2E Test Workflow
 
 # Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
 # pull request is approved, on a monthly schedule, and on manual dispatch.
-#
-# Authenticates to Azure with OIDC (keyless), mirroring how newrelic/aws-unified-lambda
-# authenticates to AWS. Requires these repository secrets:
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  (OIDC federated identity)
-#   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID          (New Relic ingest + query)
-#   SLACK_WEBHOOK_URL                                        (failure notifications)
+# Requires these repository secrets:
+#   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID
+#   SLACK_WEBHOOK_URL
 on:
   pull_request_review:
     types: [submitted]
@@ -16,7 +14,6 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  id-token: write # required for azure/login OIDC
   contents: read
 
 concurrency:
@@ -45,10 +42,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Azure login (OIDC)
+      - name: Azure login
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
