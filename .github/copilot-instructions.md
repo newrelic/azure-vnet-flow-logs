@@ -20,13 +20,13 @@ Copilot cloud-agent onboarding guidance.
   App plus ARM and Bicep templates that provision the surrounding Azure resources.
 - Runtime: multiple Function App hosting plans are supported, selected via the
   `functionAppPlan` template parameter — `FlexConsumption` (default),
-  `ElasticPremium`, `Basic`, and `Consumption`. **Azure Government / FedRAMP is
-  supported only on `ElasticPremium`, `Basic`, or `Consumption`**; Flex
-  Consumption is still unavailable in Azure Gov regions, so a `FlexConsumption`
-  + Gov-region deployment will fail at provisioning time. The
-  `newRelicEndpoint` allowedValues include the FedRAMP endpoint
-  (`https://gov-log-api.newrelic.com/log/v1`); operators are responsible for
-  pairing it with a Gov-available plan.
+  `ElasticPremium`, `Basic`, and `Consumption`. Deployment into **Azure
+  Government regions** requires `ElasticPremium`, `Basic`, or `Consumption`
+  because Flex Consumption is unavailable there. The `newRelicEndpoint`
+  allowedValues include the FedRAMP endpoint
+  (`https://gov-log-api.newrelic.com/log/v1`); the endpoint choice is
+  independent of the hosting plan — it can be selected from any Azure cloud
+  and any plan.
 
 ## Layout
 
