@@ -48,6 +48,7 @@ or directly:
 
 Required repository secrets:
 
-- `AZURE_CLIENT_ID`, `AZURE_CLIENT_SECRET`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID` — for login via `azure/login@v2`
+- `AZURE_CREDENTIALS` — JSON blob (`clientId`, `clientSecret`, `subscriptionId`, `tenantId`) for `azure/login@v2`; that action has no separate `client-secret` input, only a combined `creds` blob
+- `AZURE_SUBSCRIPTION_ID` — used by the test script itself, separate from the login step
 - `NR_LICENSE_KEY`, `NR_QUERY_API_KEY`, `NR_ACCOUNT_ID` — New Relic ingest + query
 - `SLACK_WEBHOOK_URL` — failure notifications
