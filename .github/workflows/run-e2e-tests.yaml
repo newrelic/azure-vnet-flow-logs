@@ -3,7 +3,8 @@ name: E2E Test Workflow
 # Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
 # pull request is approved, on a monthly schedule, and on manual dispatch.
 # Requires these repository secrets:
-#   AZURE_CLIENT_ID, AZURE_CLIENT_SECRET, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+#   AZURE_CREDENTIALS (JSON: clientId, clientSecret, subscriptionId, tenantId - azure/login@v2 has no separate client-secret input)
+#   AZURE_SUBSCRIPTION_ID (used by the test script itself, separate from login)
 #   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID
 #   SLACK_WEBHOOK_URL
 on:
@@ -45,10 +46,7 @@ jobs:
       - name: Azure login
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
       - name: Run e2e tests
         env:
