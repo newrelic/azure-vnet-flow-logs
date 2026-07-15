@@ -14,7 +14,7 @@ require_cmds() {
   fi
 }
 
-log() {
+resource_log() {
   echo "[resource] $*"
 }
 
@@ -33,7 +33,7 @@ ensure_ssh_key() {
     private_key_path="${VM_ADMIN_PUBLIC_KEY_PATH}.key"
   fi
 
-  log "SSH public key not found at ${VM_ADMIN_PUBLIC_KEY_PATH}; generating an ephemeral keypair"
+  resource_log "SSH public key not found at ${VM_ADMIN_PUBLIC_KEY_PATH}; generating an ephemeral keypair"
   mkdir -p "$(dirname "${private_key_path}")"
   ssh-keygen -t rsa -b 4096 -f "${private_key_path}" -N "" -q
   if [[ ! -f "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
@@ -43,7 +43,7 @@ ensure_ssh_key() {
 }
 
 create_resource_group() {
-  log "Creating resource group: ${RESOURCE_GROUP}"
+  resource_log "Creating resource group: ${RESOURCE_GROUP}"
   az group create \
     --name "${RESOURCE_GROUP}" \
     --location "${AZURE_REGION}" \
@@ -72,7 +72,7 @@ resolve_network_watcher() {
 }
 
 wait_for_blob() {
-  log "Waiting for first flow-log blob (timeout ${TEST_TIMEOUT_FLOW_LOGS}s)"
+  resource_log "Waiting for first flow-log blob (timeout ${TEST_TIMEOUT_FLOW_LOGS}s)"
   local deadline=$(( $(date +%s) + TEST_TIMEOUT_FLOW_LOGS ))
   local account_key
   account_key=$(az storage account keys list --resource-group "${RESOURCE_GROUP}" --account-name "${SOURCE_STORAGE}" --query "[0].value" -o tsv)
@@ -98,7 +98,7 @@ wait_for_blob() {
 }
 
 generate_traffic() {
-  log "Generating traffic from VM"
+  resource_log "Generating traffic from VM"
   local marker
   marker=$(uuidgen)
   echo "${marker}" > "${MARKER_FILE}"

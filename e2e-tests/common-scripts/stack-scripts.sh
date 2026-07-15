@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() {
+stack_log() {
   echo "[stack] $*"
 }
 
 deploy_forwarder_template() {
-  log "Deploying forwarder resources via ARM template"
+  stack_log "Deploying forwarder resources via ARM template"
   # Parameter names must match arm/azuredeploy-vnetflowlogsforwarder.json exactly.
   # The template derives location from the resource group, so no location param is passed.
   az deployment group create \
@@ -38,7 +38,7 @@ deploy_forwarder_template() {
 #   event hub namespace      : the only Microsoft.EventHub/namespaces in the group
 #   event hub                : the fixed name 'nrvnetflowlogs-eventhub'
 resolve_forwarder_resources() {
-  log "Resolving deployed forwarder resource names"
+  stack_log "Resolving deployed forwarder resource names"
 
   if [[ -n "${SOURCE_STORAGE_ACCOUNT_NAME}" ]]; then
     SOURCE_STORAGE="${SOURCE_STORAGE_ACCOUNT_NAME}"
@@ -65,7 +65,7 @@ resolve_forwarder_resources() {
     return 1
   fi
 
-  log "Resolved: source=${SOURCE_STORAGE}, cursor=${CURSOR_STORAGE}, functionApp=${FUNCTION_APP_NAME}, eventHubNs=${EVENTHUB_NAMESPACE}, eventHub=${EVENTHUB_NAME}"
+  stack_log "Resolved: source=${SOURCE_STORAGE}, cursor=${CURSOR_STORAGE}, functionApp=${FUNCTION_APP_NAME}, eventHubNs=${EVENTHUB_NAMESPACE}, eventHub=${EVENTHUB_NAME}"
 }
 
 deploy_traffic_template() {
@@ -74,7 +74,7 @@ deploy_traffic_template() {
   local vm_key
   vm_key=$(cat "${VM_ADMIN_PUBLIC_KEY_PATH}")
 
-  log "Deploying traffic resources via ARM template"
+  stack_log "Deploying traffic resources via ARM template"
   az deployment group create \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${TRAFFIC_DEPLOYMENT_NAME}" \
@@ -96,7 +96,7 @@ deploy_traffic_template() {
 }
 
 deploy_flowlog_template() {
-  log "Deploying flow-log resource via ARM template"
+  stack_log "Deploying flow-log resource via ARM template"
   local source_storage_id vnet_id
   source_storage_id=$(az storage account show --name "${SOURCE_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query id -o tsv)
   vnet_id=$(az network vnet show --name "${VNET_NAME}" --resource-group "${RESOURCE_GROUP}" --query id -o tsv)
@@ -114,18 +114,35 @@ deploy_flowlog_template() {
 }
 
 build_and_deploy_package() {
-  log "Building function package"
+  stack_log "Building function package"
   npm run package >/dev/null
 
-  log "Deploying package"
-  az functionapp deployment source config-zip \
-    --resource-group "${RESOURCE_GROUP}" \
-    --name "${FUNCTION_APP_NAME}" \
-    --src "${DEPLOY_PACKAGE}" >/dev/null
+  stack_log "Deploying package"
+  # A freshly created Function App's *.scm.azurewebsites.net TLS binding can briefly
+  # present a placeholder certificate before Azure's real cert propagates, so retry
+  # with backoff instead of failing on the first attempt.
+  local attempt=1 max_attempts=5 sleep_s=15 out
+  while true; do
+    if out=$(az functionapp deployment source config-zip \
+      --resource-group "${RESOURCE_GROUP}" \
+      --name "${FUNCTION_APP_NAME}" \
+      --src "${DEPLOY_PACKAGE}" 2>&1); then
+      return 0
+    fi
+    if [[ ${attempt} -ge ${max_attempts} ]]; then
+      echo "Package deployment failed after ${max_attempts} attempts:"
+      echo "${out}"
+      return 1
+    fi
+    stack_log "Package deployment attempt ${attempt} failed (likely SCM TLS still propagating); retrying in ${sleep_s}s"
+    sleep "${sleep_s}"
+    attempt=$((attempt + 1))
+    sleep_s=$((sleep_s * 2))
+  done
 }
 
 verify_eventgrid_subscription() {
-  log "Verifying Event Grid -> Event Hub subscription wiring"
+  stack_log "Verifying Event Grid -> Event Hub subscription wiring"
   local storage_id
   storage_id=$(az storage account show --name "${SOURCE_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query id -o tsv)
   local eh_id
@@ -144,7 +161,7 @@ verify_eventgrid_subscription() {
 }
 
 show_deployment_failures() {
-  log "Fetching deployment errors (if any)"
+  stack_log "Fetching deployment errors (if any)"
   az deployment operation group list \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${FORWARDER_DEPLOYMENT_NAME}" \
@@ -163,20 +180,20 @@ teardown_with_backoff() {
   # run resource group, so deleting the run RG never removes it. Delete it first,
   # best-effort, to avoid leaving a flow log pointing at deleted resources.
   if [[ -n "${NETWORK_WATCHER_NAME:-}" ]]; then
-    log "Deleting flow log ${RUN_ID}-flowlog from network watcher ${NETWORK_WATCHER_NAME}"
+    stack_log "Deleting flow log ${RUN_ID}-flowlog from network watcher ${NETWORK_WATCHER_NAME}"
     az network watcher flow-log delete \
       --location "${AZURE_REGION}" \
       --name "${RUN_ID}-flowlog" >/dev/null 2>&1 || true
   fi
 
-  log "Deleting resource group"
+  stack_log "Deleting resource group"
   az group delete --name "${RESOURCE_GROUP}" --yes --no-wait >/dev/null || true
 
   local sleep_s=10
   local max_sleep=120
   for _ in {1..10}; do
     if ! az group show --name "${RESOURCE_GROUP}" >/dev/null 2>&1; then
-      log "Resource group deleted"
+      stack_log "Resource group deleted"
       return 0
     fi
     sleep "${sleep_s}"
@@ -188,5 +205,5 @@ teardown_with_backoff() {
     fi
   done
 
-  log "Resource group delete still in progress"
+  stack_log "Resource group delete still in progress"
 }

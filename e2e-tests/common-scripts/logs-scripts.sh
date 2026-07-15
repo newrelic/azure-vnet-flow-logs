@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-log() {
+nr_log() {
   echo "[logs] $*"
 }
 
@@ -22,7 +22,7 @@ wait_for_nr_logs() {
   local attempt=0
 
   while [[ ${attempt} -lt ${NR_POLL_RETRIES} ]]; do
-    log "NR query attempt $((attempt + 1))"
+    nr_log "NR query attempt $((attempt + 1))"
     local out
     out=$(nr_query "${nrql}")
     echo "${out}" > "${NR_RESULTS_FILE}"
@@ -30,7 +30,7 @@ wait_for_nr_logs() {
     local count
     count=$(echo "${out}" | jq '[.data.actor.account.nrql.results[]] | length' 2>/dev/null || echo 0)
     if [[ "${count}" -gt 0 ]]; then
-      log "NR results found: ${count}"
+      nr_log "NR results found: ${count}"
       return 0
     fi
 
@@ -42,7 +42,7 @@ wait_for_nr_logs() {
     attempt=$((attempt + 1))
   done
 
-  log "No NR results found within retry budget"
+  nr_log "No NR results found within retry budget"
   return 1
 }
 
@@ -85,12 +85,12 @@ wait_for_nr_count_increase() {
   local attempt=0
 
   while [[ ${attempt} -lt ${NR_POLL_RETRIES} ]]; do
-    log "NR count-increase check attempt $((attempt + 1))"
+    nr_log "NR count-increase check attempt $((attempt + 1))"
     local count
     count=$(nr_count_for "${nrql}")
-    log "Current NR count: ${count} (baseline ${baseline})"
+    nr_log "Current NR count: ${count} (baseline ${baseline})"
     if [[ "${count}" -gt "${baseline}" ]]; then
-      log "NR count increased: ${baseline} -> ${count}"
+      nr_log "NR count increased: ${baseline} -> ${count}"
       return 0
     fi
 
@@ -102,7 +102,7 @@ wait_for_nr_count_increase() {
     attempt=$((attempt + 1))
   done
 
-  log "NR count did not increase within retry budget (baseline=${baseline})"
+  nr_log "NR count did not increase within retry budget (baseline=${baseline})"
   return 1
 }
 
