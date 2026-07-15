@@ -240,7 +240,6 @@ var planConfig = {
     properties: {
       numberOfWorkers: 1
       targetWorkerCount: 1
-      computeMode: 'Dedicated'
       zoneRedundant: false
     }
     sku: {
