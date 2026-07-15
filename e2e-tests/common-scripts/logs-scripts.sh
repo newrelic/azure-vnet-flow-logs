@@ -49,14 +49,15 @@ wait_for_nr_logs() {
 assert_required_attributes() {
   local json_file="$1"
   local missing=0
+  # Flat attribute keys as emitted by VNetFlowForwarder/parser.js (note flowState, not state).
   local attrs=(
-    "flow.srcAddr"
-    "flow.destAddr"
-    "flow.srcPort"
-    "flow.destPort"
-    "flow.protocol"
-    "flow.direction"
-    "flow.state"
+    "srcAddr"
+    "destAddr"
+    "srcPort"
+    "destPort"
+    "protocol"
+    "direction"
+    "flowState"
   )
 
   for attr in "${attrs[@]}"; do
@@ -71,16 +72,58 @@ assert_required_attributes() {
   fi
 }
 
+nr_count_for() {
+  local nrql="$1"
+  local nr_json
+  nr_json=$(nr_query "${nrql}")
+  echo "${nr_json}" | jq -r '.["data"].actor.account.nrql.results[0].count // 0'
+}
+
+wait_for_nr_count_increase() {
+  local nrql="$1" baseline="$2"
+  local sleep_s="${NR_POLL_INITIAL}"
+  local attempt=0
+
+  while [[ ${attempt} -lt ${NR_POLL_RETRIES} ]]; do
+    log "NR count-increase check attempt $((attempt + 1))"
+    local count
+    count=$(nr_count_for "${nrql}")
+    log "Current NR count: ${count} (baseline ${baseline})"
+    if [[ "${count}" -gt "${baseline}" ]]; then
+      log "NR count increased: ${baseline} -> ${count}"
+      return 0
+    fi
+
+    sleep "${sleep_s}"
+    sleep_s=$((sleep_s * 2))
+    if [[ ${sleep_s} -gt ${NR_POLL_MAX} ]]; then
+      sleep_s=${NR_POLL_MAX}
+    fi
+    attempt=$((attempt + 1))
+  done
+
+  log "NR count did not increase within retry budget (baseline=${baseline})"
+  return 1
+}
+
 compare_blob_and_nr_counts() {
   local nrql="$1"
-  local tuple_count nr_count nr_json
+  local tuple_count nr_count
 
   tuple_count=$(jq '[.records[].flowRecords.flows[].flowGroups[].flowTuples[]] | length' "${RAW_BLOB_FILE}" 2>/dev/null || echo 0)
-  nr_json=$(nr_query "${nrql}")
-  nr_count=$(echo "${nr_json}" | jq -r '.["data"].actor.account.nrql.results[0].count // 0')
+  nr_count=$(nr_count_for "${nrql}")
 
-  echo "Tuple count in blob: ${tuple_count}"
-  echo "NR record count: ${nr_count}"
+  echo "Tuple count in sampled blob: ${tuple_count}"
+  echo "NR record count (run-scoped): ${nr_count}"
 
-  [[ "${tuple_count}" -eq "${nr_count}" ]]
+  # The NRQL is scoped to this run's VNet, so nr_count reflects only this run's
+  # flow data. The sampled blob is a single hourly blob that Azure keeps appending
+  # to, so New Relic may legitimately hold at least as many records as the snapshot
+  # we counted. Assert the pipeline delivered data without loss: NR >= blob > 0.
+  if [[ "${tuple_count}" -le 0 ]]; then
+    echo "No flow tuples found in sampled blob; cannot validate completeness"
+    return 1
+  fi
+
+  [[ "${nr_count}" -ge "${tuple_count}" ]]
 }

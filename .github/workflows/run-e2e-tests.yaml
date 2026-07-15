@@ -1,0 +1,71 @@
+name: E2E Test Workflow
+
+# Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
+# pull request is approved, on a monthly schedule, and on manual dispatch.
+#
+# Authenticates to Azure with OIDC (keyless), mirroring how newrelic/aws-unified-lambda
+# authenticates to AWS. Requires these repository secrets:
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID  (OIDC federated identity)
+#   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID          (New Relic ingest + query)
+#   SLACK_WEBHOOK_URL                                        (failure notifications)
+on:
+  pull_request_review:
+    types: [submitted]
+  schedule:
+    - cron: '17 3 1 * *' # monthly, off-peak minute
+  workflow_dispatch: {}
+
+permissions:
+  id-token: write # required for azure/login OIDC
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run-e2e:
+    # Only run on approved reviews; schedule / manual dispatch always run.
+    if: >-
+      github.event_name != 'pull_request_review' ||
+      github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # On a review, test the PR head so the deployed function is the PR's code.
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Run e2e tests
+        env:
+          AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_REGION: centralus
+          NR_LICENSE_KEY: ${{ secrets.NR_LICENSE_KEY }}
+          NR_QUERY_API_KEY: ${{ secrets.NR_QUERY_API_KEY }}
+          NR_ACCOUNT_ID: ${{ secrets.NR_ACCOUNT_ID }}
+        run: npm run test:e2e
+
+      - name: Send failure notification to Slack
+        if: failure()
+        uses: ravsamhq/notify-slack-action@v2
+        with:
+          status: ${{ job.status }}
+          notify_when: 'failure'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

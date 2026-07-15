@@ -3,7 +3,7 @@ set -euo pipefail
 
 require_cmds() {
   local missing=0
-  for c in az jq curl uuidgen zip; do
+  for c in az jq curl uuidgen zip ssh-keygen; do
     if ! command -v "$c" >/dev/null 2>&1; then
       echo "Missing required command: $c"
       missing=1
@@ -16,6 +16,30 @@ require_cmds() {
 
 log() {
   echo "[resource] $*"
+}
+
+# Ensure an SSH public key exists at VM_ADMIN_PUBLIC_KEY_PATH for the traffic VM.
+# On a fresh CI runner no key exists, so generate an ephemeral keypair rather than
+# failing. The VM is provisioned and torn down within the run, so the key is
+# throwaway.
+ensure_ssh_key() {
+  if [[ -f "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
+    return 0
+  fi
+
+  local private_key_path
+  private_key_path="${VM_ADMIN_PUBLIC_KEY_PATH%.pub}"
+  if [[ "${private_key_path}" == "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
+    private_key_path="${VM_ADMIN_PUBLIC_KEY_PATH}.key"
+  fi
+
+  log "SSH public key not found at ${VM_ADMIN_PUBLIC_KEY_PATH}; generating an ephemeral keypair"
+  mkdir -p "$(dirname "${private_key_path}")"
+  ssh-keygen -t rsa -b 4096 -f "${private_key_path}" -N "" -q
+  if [[ ! -f "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
+    # ssh-keygen writes <path>.pub next to the private key; align if names differ.
+    cp "${private_key_path}.pub" "${VM_ADMIN_PUBLIC_KEY_PATH}"
+  fi
 }
 
 create_resource_group() {

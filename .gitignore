@@ -2,6 +2,7 @@ node_modules
 .idea
 coverage/*
 VNetFlowForwarder.zip
+e2e-tests/.work/
 **/.DS_Store
 .DS_Store
 local.settings.json

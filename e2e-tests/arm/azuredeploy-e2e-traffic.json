@@ -41,24 +41,9 @@
     "subnetAddressPrefix": {
       "type": "string",
       "defaultValue": "10.0.0.0/24"
-    },
-    "sourceStorageAccountName": {
-      "type": "string"
-    },
-    "networkWatcherName": {
-      "type": "string"
-    },
-    "networkWatcherResourceGroup": {
-      "type": "string",
-      "defaultValue": "NetworkWatcherRG"
-    },
-    "flowLogName": {
-      "type": "string"
     }
   },
-  "variables": {
-    "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
-  },
+  "variables": {},
   "resources": [
     {
       "type": "Microsoft.Network/networkSecurityGroups",
@@ -197,29 +182,6 @@
           ]
         }
       }
-    },
-    {
-      "type": "Microsoft.Network/networkWatchers/flowLogs",
-      "apiVersion": "2023-02-01",
-      "name": "[concat(parameters('networkWatcherName'), '/', parameters('flowLogName'))]",
-      "location": "[parameters('location')]",
-      "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
-      ],
-      "properties": {
-        "enabled": true,
-        "targetResourceId": "[variables('vnetId')]",
-        "storageId": "[resourceId('Microsoft.Storage/storageAccounts', parameters('sourceStorageAccountName'))]",
-        "retentionPolicy": {
-          "enabled": false,
-          "days": 0
-        },
-        "format": {
-          "type": "JSON",
-          "version": 2
-        }
-      },
-      "scope": "[format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, parameters('networkWatcherResourceGroup'))]"
     }
   ],
   "outputs": {
