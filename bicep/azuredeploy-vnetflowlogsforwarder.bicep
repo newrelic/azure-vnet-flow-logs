@@ -570,7 +570,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~22'
         }
-      ]), (pc.usesIdentityStorage ? [
+      ]), ((pc.usesIdentityStorage || useManagedIdentity) ? [
         {
           name: 'AzureWebJobsStorage__accountName'
           value: functionStorageAccountName
