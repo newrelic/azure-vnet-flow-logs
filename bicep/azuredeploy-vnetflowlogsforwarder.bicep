@@ -214,6 +214,7 @@ var planConfig = {
     subnetDelegation: 'Microsoft.App/environments'
     usesRunFromPackage: false
     usesIdentityStorage: true
+    supportsIdentityHostStorage: true
     functionAppReserved: true
   }
   ElasticPremium: {
@@ -221,7 +222,6 @@ var planConfig = {
     properties: {
       elasticScaleEnabled: true
       maximumElasticWorkerCount: (eventHubScalingMode == 'Enterprise' ? 20 : 4)
-      perSiteScaling: true
       zoneRedundant: false
     }
     sku: {
@@ -234,6 +234,7 @@ var planConfig = {
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
     usesIdentityStorage: false
+    supportsIdentityHostStorage: true
     functionAppReserved: false
   }
   Basic: {
@@ -241,7 +242,7 @@ var planConfig = {
     properties: {
       numberOfWorkers: 1
       targetWorkerCount: 1
-      computeMode: 'Dynamic'
+      computeMode: 'Dedicated'
       zoneRedundant: false
     }
     sku: {
@@ -256,6 +257,7 @@ var planConfig = {
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
     usesIdentityStorage: false
+    supportsIdentityHostStorage: true
     functionAppReserved: false
   }
   Consumption: {
@@ -274,6 +276,7 @@ var planConfig = {
     subnetDelegation: ''
     usesRunFromPackage: true
     usesIdentityStorage: false
+    supportsIdentityHostStorage: false
     functionAppReserved: false
   }
 }
@@ -494,6 +497,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     httpsOnly: true
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     virtualNetworkSubnetId: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation) ? functionsSubnet.id : null)
+    vnetRouteAllEnabled: (functionAppPlan == 'FlexConsumption' && disablePublicAccessToStorageAccount)
     functionAppConfig: pc.functionAppConfig
     siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
@@ -570,7 +574,7 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'WEBSITE_NODE_DEFAULT_VERSION'
           value: '~22'
         }
-      ]), ((pc.usesIdentityStorage || useManagedIdentity) ? [
+      ]), ((pc.usesIdentityStorage || (pc.supportsIdentityHostStorage && useManagedIdentity)) ? [
         {
           name: 'AzureWebJobsStorage__accountName'
           value: functionStorageAccountName
