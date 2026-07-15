@@ -495,7 +495,6 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     httpsOnly: true
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
     virtualNetworkSubnetId: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation) ? functionsSubnet.id : null)
-    vnetRouteAllEnabled: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation))
     functionAppConfig: pc.functionAppConfig
     siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
