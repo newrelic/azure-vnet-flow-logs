@@ -259,7 +259,6 @@ var planConfig = {
   Consumption: {
     kind: 'functionapp'
     properties: {
-      numberOfWorkers: 1
       computeMode: 'Dynamic'
     }
     sku: {
