@@ -24,9 +24,8 @@ Copilot cloud-agent onboarding guidance.
   Government regions** requires `ElasticPremium`, `Basic`, or `Consumption`
   because Flex Consumption is unavailable there. The `newRelicEndpoint`
   allowedValues include the FedRAMP endpoint
-  (`https://gov-log-api.newrelic.com/log/v1`); the endpoint choice is
-  independent of the hosting plan — it can be selected from any Azure cloud
-  and any plan.
+  (`https://gov-log-api.newrelic.com/log/v1`), provided for New Relic Gov
+  customers.
 
 ## Layout
 
