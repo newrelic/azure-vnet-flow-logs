@@ -9,21 +9,41 @@ deploy_forwarder_template() {
   stack_log "Deploying forwarder resources via ARM template"
   # Parameter names must match arm/azuredeploy-vnetflowlogsforwarder.json exactly.
   # The template derives location from the resource group, so no location param is passed.
-  az deployment group create \
-    --resource-group "${RESOURCE_GROUP}" \
-    --name "${FORWARDER_DEPLOYMENT_NAME}" \
-    --template-file "${ARM_FORWARDER_TEMPLATE}" \
-    --parameters \
-      newRelicIngestLicenseKey="${NR_LICENSE_KEY}" \
-      newRelicEndpoint="${NR_LOG_ENDPOINT}" \
-      eventHubScalingMode="${SCALING_MODE}" \
-      disablePublicAccessToStorageAccount="${DISABLE_PUBLIC_ACCESS_TO_STORAGE}" \
-      maxRetries="${MAX_RETRIES}" \
-      retryInterval="${RETRY_INTERVAL}" \
-      maxEventBatchSize="${EVENT_HUB_BATCH_SIZE}" \
-      functionLogLevel="${FUNCTION_LOG_LEVEL}" \
-      flowLogsStorageAccountName="${SOURCE_STORAGE_ACCOUNT_NAME}" \
-    --query properties.outputs -o json > "${FORWARDER_OUTPUTS_FILE}"
+  # The Event Grid -> Event Hub subscription's dependsOn on the delivery identity's
+  # role assignment only guarantees ARM created that resource, not that Azure RBAC
+  # has finished propagating the permission - so a fresh deployment can intermittently
+  # fail with "Managed Identity Authorization Error" on the subscription. Retry the
+  # whole deployment rather than fail outright: it's idempotent, ARM reconciles
+  # already-succeeded resources instead of recreating them.
+  local attempt=1 max_attempts=4 sleep_s=30 out
+  while true; do
+    if out=$(az deployment group create \
+      --resource-group "${RESOURCE_GROUP}" \
+      --name "${FORWARDER_DEPLOYMENT_NAME}" \
+      --template-file "${ARM_FORWARDER_TEMPLATE}" \
+      --parameters \
+        newRelicIngestLicenseKey="${NR_LICENSE_KEY}" \
+        newRelicEndpoint="${NR_LOG_ENDPOINT}" \
+        eventHubScalingMode="${SCALING_MODE}" \
+        disablePublicAccessToStorageAccount="${DISABLE_PUBLIC_ACCESS_TO_STORAGE}" \
+        maxRetries="${MAX_RETRIES}" \
+        retryInterval="${RETRY_INTERVAL}" \
+        maxEventBatchSize="${EVENT_HUB_BATCH_SIZE}" \
+        functionLogLevel="${FUNCTION_LOG_LEVEL}" \
+        flowLogsStorageAccountName="${SOURCE_STORAGE_ACCOUNT_NAME}" \
+      --query properties.outputs -o json); then
+      echo "${out}" > "${FORWARDER_OUTPUTS_FILE}"
+      break
+    fi
+    if [[ ${attempt} -ge ${max_attempts} ]]; then
+      echo "Forwarder deployment failed after ${max_attempts} attempts"
+      return 1
+    fi
+    stack_log "Forwarder deployment attempt ${attempt} failed (possible RBAC propagation race on Event Grid delivery identity); retrying in ${sleep_s}s"
+    sleep "${sleep_s}"
+    attempt=$((attempt + 1))
+    sleep_s=$((sleep_s * 2))
+  done
 
   resolve_forwarder_resources
   export SOURCE_STORAGE FUNCTION_APP_NAME EVENTHUB_NAMESPACE EVENTHUB_NAME CURSOR_STORAGE
