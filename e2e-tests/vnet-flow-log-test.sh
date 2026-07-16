@@ -44,13 +44,16 @@ main() {
   local nr_scope
   nr_scope="instrumentation.provider = 'azure' AND instrumentation.name = 'vnet-app' AND virtualNetworkName = '${VNET_NAME}'"
 
+  # Some NR accounts route this log type into a custom event type via a data
+  # partition rule (confirmed on a real run: records landed in
+  # Log_VNET_Flows_Azure, not Log), so query both - harmless if one has no data.
   local nrql_records
-  nrql_records="SELECT * FROM Log WHERE ${nr_scope} SINCE 30 minutes ago LIMIT 50"
+  nrql_records="SELECT * FROM Log, Log_VNET_Flows_Azure WHERE ${nr_scope} SINCE 30 minutes ago LIMIT 50"
   wait_for_nr_logs "${nrql_records}"
   assert_required_attributes "${NR_RESULTS_FILE}"
 
   local nrql_count
-  nrql_count="SELECT count(*) as count FROM Log WHERE ${nr_scope} SINCE 30 minutes ago"
+  nrql_count="SELECT count(*) as count FROM Log, Log_VNET_Flows_Azure WHERE ${nr_scope} SINCE 30 minutes ago"
   compare_blob_and_nr_counts "${nrql_count}" || {
     echo "[main] Completeness check failed"
     exit 1
