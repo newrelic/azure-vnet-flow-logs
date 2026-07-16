@@ -1,18 +1,15 @@
 name: E2E Test Workflow
 
-# Runs the end-to-end suite (e2e-tests/) against a real Azure environment on a
-# monthly schedule and on manual dispatch.
-# The pull_request_review trigger is disabled for now while the suite itself is
-# still being validated - re-add it (see commented block below) once a run is
-# confirmed green, so it doesn't fire a ~15-20 min Azure run on every PR approval.
+# Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
+# pull request is approved, on a monthly schedule, and on manual dispatch.
 # Requires these repository secrets:
 #   AZURE_CREDENTIALS (JSON: clientId, clientSecret, subscriptionId, tenantId - azure/login@v2 has no separate client-secret input)
 #   AZURE_SUBSCRIPTION_ID (used by the test script itself, separate from login)
 #   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID
 #   SLACK_WEBHOOK_URL
 on:
-  # pull_request_review:
-  #   types: [submitted]
+  pull_request_review:
+    types: [submitted]
   schedule:
     - cron: '17 3 1 * *' # monthly, off-peak minute
   workflow_dispatch: {}
@@ -26,6 +23,10 @@ concurrency:
 
 jobs:
   run-e2e:
+    # Only run on approved reviews; schedule / manual dispatch always run.
+    if: >-
+      github.event_name != 'pull_request_review' ||
+      github.event.review.state == 'approved'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
