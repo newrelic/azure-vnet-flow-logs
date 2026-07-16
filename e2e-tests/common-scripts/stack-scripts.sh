@@ -168,10 +168,13 @@ verify_eventgrid_subscription() {
   local eh_id
   eh_id=$(az eventhubs eventhub show --name "${EVENTHUB_NAME}" --namespace-name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" --query id -o tsv)
 
+  # The forwarder template delivers via a user-assigned managed identity
+  # (deliveryWithResourceIdentity), not plain `destination` - that field is null
+  # for identity-based subscriptions, which crashes contains() if queried directly.
   local sub_count
   sub_count=$(az eventgrid event-subscription list \
     --source-resource-id "${storage_id}" \
-    --query "[?contains(destination.properties.resourceId, '${eh_id}')].name | length(@)" \
+    --query "[?contains((destination.properties.resourceId || deliveryWithResourceIdentity.destination.properties.resourceId || ''), '${eh_id}')].name | length(@)" \
     -o tsv)
 
   if [[ "${sub_count}" == "0" || -z "${sub_count}" ]]; then
