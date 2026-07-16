@@ -2,7 +2,7 @@
 set -euo pipefail
 
 stack_log() {
-  echo "[stack] $*"
+  echo "[stack] $*" >&2
 }
 
 deploy_forwarder_template() {

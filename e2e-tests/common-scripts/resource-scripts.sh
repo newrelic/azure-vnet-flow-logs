@@ -15,7 +15,7 @@ require_cmds() {
 }
 
 resource_log() {
-  echo "[resource] $*"
+  echo "[resource] $*" >&2
 }
 
 # Ensure an SSH public key exists at VM_ADMIN_PUBLIC_KEY_PATH for the traffic VM.

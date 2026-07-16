@@ -2,7 +2,7 @@
 set -euo pipefail
 
 nr_log() {
-  echo "[logs] $*"
+  echo "[logs] $*" >&2
 }
 
 nr_query() {
