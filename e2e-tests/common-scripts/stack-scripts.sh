@@ -170,11 +170,14 @@ verify_eventgrid_subscription() {
 
   # The forwarder template delivers via a user-assigned managed identity
   # (deliveryWithResourceIdentity), not plain `destination` - that field is null
-  # for identity-based subscriptions, which crashes contains() if queried directly.
+  # for identity-based subscriptions. Also: the returned/list representation has no
+  # extra `.properties.` nesting around resourceId (that nesting only exists in the
+  # ARM PUT/deployment body schema) - confirmed empirically against a live
+  # subscription, so query destination.resourceId directly, not destination.properties.resourceId.
   local sub_count
   sub_count=$(az eventgrid event-subscription list \
     --source-resource-id "${storage_id}" \
-    --query "[?contains((destination.properties.resourceId || deliveryWithResourceIdentity.destination.properties.resourceId || ''), '${eh_id}')].name | length(@)" \
+    --query "[?contains((destination.resourceId || deliveryWithResourceIdentity.destination.resourceId || ''), '${eh_id}')].name | length(@)" \
     -o tsv)
 
   if [[ "${sub_count}" == "0" || -z "${sub_count}" ]]; then
