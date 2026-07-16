@@ -228,7 +228,9 @@ var planConfig = {
       name: 'EP1'
     }
     functionAppConfig: null
-    siteConfigOverrides: {}
+    siteConfigOverrides: {
+      functionsRuntimeScaleMonitoringEnabled: true
+    }
     extraAppSettings: []
     subnetDelegation: 'Microsoft.Web/serverFarms'
     usesRunFromPackage: true
