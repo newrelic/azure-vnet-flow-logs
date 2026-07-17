@@ -3,7 +3,7 @@ name: E2E Test Workflow
 # Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
 # pull request is approved, on a monthly schedule, and on manual dispatch.
 # Requires these repository secrets:
-#   AZURE_CREDENTIALS (JSON: clientId, clientSecret, subscriptionId, tenantId - azure/login@v2 has no separate client-secret input)
+#   AZURE_CREDENTIALS (JSON: clientId, clientSecret, subscriptionId, tenantId - azure/login has no separate client-secret input)
 #   AZURE_SUBSCRIPTION_ID (used by the test script itself, separate from login)
 #   NR_LICENSE_KEY, NR_QUERY_API_KEY, NR_ACCOUNT_ID
 #   SLACK_WEBHOOK_URL
@@ -30,13 +30,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # On a review, test the PR head so the deployed function is the PR's code.
           ref: ${{ github.event.pull_request.head.sha || github.ref }}
 
       - name: Use Node.js 22.x
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22.x
 
@@ -44,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Azure login
-        uses: azure/login@v2
+        uses: azure/login@v3
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
