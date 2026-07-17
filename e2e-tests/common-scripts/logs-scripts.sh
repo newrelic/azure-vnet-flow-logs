@@ -16,10 +16,21 @@ nr_query() {
     -d "${payload}"
 }
 
+nr_warmup_sleep() {
+  # Real flow events don't occur on the Azure side for several minutes after
+  # traffic generation - polling immediately just wastes NerdGraph calls on a
+  # known-dead window. Sleep through that window once, up front, before the
+  # adaptive retry loop starts checking.
+  nr_log "Warm-up: waiting ${NR_INGESTION_WARMUP}s for real flow events to occur before the first NR check"
+  sleep "${NR_INGESTION_WARMUP}"
+}
+
 wait_for_nr_logs() {
   local nrql="$1"
   local sleep_s="${NR_POLL_INITIAL}"
   local attempt=0
+
+  nr_warmup_sleep
 
   while [[ ${attempt} -lt ${NR_POLL_RETRIES} ]]; do
     nr_log "NR query attempt $((attempt + 1))"
@@ -83,6 +94,8 @@ wait_for_nr_count_increase() {
   local nrql="$1" baseline="$2"
   local sleep_s="${NR_POLL_INITIAL}"
   local attempt=0
+
+  nr_warmup_sleep
 
   while [[ ${attempt} -lt ${NR_POLL_RETRIES} ]]; do
     nr_log "NR count-increase check attempt $((attempt + 1))"
