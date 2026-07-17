@@ -8,7 +8,14 @@ nr_log() {
 nr_query() {
   local nrql="$1"
   local payload
-  payload=$(jq -n --arg accountId "${NR_ACCOUNT_ID}" --arg nrql "${nrql}" '{query: "{ actor { account(id: " + $accountId + ") { nrql(query: \\\"" + $nrql + "\\\") { results } } } }"}')
+  # tojson safely embeds the nrql string as a JSON string literal - the previous
+  # manual \\\" escaping was a genuine jq syntax error (confirmed on a real run:
+  # "jq: 1 compile error"). Under set -e, that failure did NOT abort the script -
+  # it silently left payload empty, so curl sent an empty body to NerdGraph and
+  # every query since has returned 0 results regardless of whether real data
+  # existed, indistinguishable from "data hasn't arrived yet."
+  payload=$(jq -n --arg accountId "${NR_ACCOUNT_ID}" --arg nrql "${nrql}" \
+    '{query: ("{ actor { account(id: " + $accountId + ") { nrql(query: " + ($nrql | tojson) + ") { results } } } }")}')
 
   curl -sS -X POST "${NR_GRAPHQL_ENDPOINT}" \
     -H "Content-Type: application/json" \
