@@ -2,6 +2,10 @@ name: E2E Test Workflow
 
 # Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
 # pull request is approved, on a monthly schedule, and on manual dispatch.
+# This job checks out and executes the PR's own code with real Azure/NR secrets
+# present, so on the pull_request_review path, check-authorization requires the
+# approving reviewer to have admin access - a routine write-access approval
+# alone isn't enough to run it.
 # Requires these repository secrets:
 #   AZURE_CREDENTIALS (JSON: clientId, clientSecret, subscriptionId, tenantId - azure/login has no separate client-secret input)
 #   AZURE_SUBSCRIPTION_ID (used by the test script itself, separate from login)
@@ -22,11 +26,48 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-authorization:
+    runs-on: ubuntu-latest
+    outputs:
+      authorized: ${{ steps.check.outputs.authorized }}
+    steps:
+      - name: Verify the approving reviewer has admin access
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            if (context.eventName !== 'pull_request_review') {
+              core.info(`Event is '${context.eventName}', not pull_request_review - no approval-based restriction applies.`);
+              core.setOutput('authorized', 'true');
+              return;
+            }
+
+            const review = context.payload.review;
+
+            if (review.state !== 'approved') {
+              core.info(`Review state is '${review.state}', not 'approved' - not running.`);
+              core.setOutput('authorized', 'false');
+              return;
+            }
+
+            const { data: permission } = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: review.user.login,
+            });
+
+            if (permission.permission !== 'admin') {
+              core.warning(`Reviewer ${review.user.login} has permission '${permission.permission}', not 'admin' - refusing to run.`);
+              core.setOutput('authorized', 'false');
+              return;
+            }
+
+            core.info(`Authorized: reviewer ${review.user.login} has admin access.`);
+            core.setOutput('authorized', 'true');
+
   run-e2e:
-    # Only run on approved reviews; schedule / manual dispatch always run.
-    if: >-
-      github.event_name != 'pull_request_review' ||
-      github.event.review.state == 'approved'
+    needs: [check-authorization]
+    if: needs.check-authorization.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
