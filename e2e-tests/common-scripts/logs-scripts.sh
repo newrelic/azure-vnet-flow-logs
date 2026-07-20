@@ -65,7 +65,7 @@ wait_for_nr_logs() {
     nr_log "NR query attempt $((attempt + 1))"
     local out
     out=$(nr_query "${nrql}")
-    validate_nr_response "${out}"
+    validate_nr_response "${out}" || return 1
     echo "${out}" > "${NR_RESULTS_FILE}"
 
     local count
@@ -121,7 +121,7 @@ nr_count_for() {
   local nrql="$1"
   local nr_json
   nr_json=$(nr_query "${nrql}")
-  validate_nr_response "${nr_json}"
+  validate_nr_response "${nr_json}" || return 1
   echo "${nr_json}" | jq -r '.["data"].actor.account.nrql.results[0].count // 0'
 }
 

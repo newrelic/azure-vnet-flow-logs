@@ -75,9 +75,13 @@ main() {
   second_round_target_port=80
   # Resolve once here, then curl that exact IP in the second round, so the NRQL
   # filter below matches the specific destination the VM actually contacted.
-  second_round_target_ip=$(getent ahostsv4 "${second_round_host}" | awk 'NR == 1 { print $1; exit }')
-  if [[ -z "${second_round_target_ip}" ]]; then
+  if ! second_round_target_ip=$(getent ahostsv4 "${second_round_host}" | awk 'NR == 1 { print $1; exit }') \
+    || [[ -z "${second_round_target_ip}" ]]; then
     echo "[main] Failed to resolve second-round target host ${second_round_host}"
+    exit 1
+  fi
+  if [[ ! "${second_round_target_ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+    echo "[main] Resolved second-round target host ${second_round_host} to a non-IPv4 value: ${second_round_target_ip}"
     exit 1
   fi
 
