@@ -80,7 +80,7 @@ main() {
     echo "[main] Failed to resolve second-round target host ${second_round_host}"
     exit 1
   fi
-  if [[ ! "${second_round_target_ip}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+  if [[ ! "${second_round_target_ip}" =~ ^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$ ]]; then
     echo "[main] Resolved second-round target host ${second_round_host} to a non-IPv4 value: ${second_round_target_ip}"
     exit 1
   fi

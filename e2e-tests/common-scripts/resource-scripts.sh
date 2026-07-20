@@ -104,12 +104,15 @@ generate_traffic() {
   local marker
   marker=$(uuidgen)
   echo "${marker}" > "${MARKER_FILE}"
+  local escaped_url escaped_host_header
+  escaped_url=$(printf '%q' "${url}")
+  escaped_host_header=$(printf '%q' "${host_header}")
 
   az vm run-command invoke \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
     --command-id RunShellScript \
-    --scripts "set -e; url='${url}'; host_header='${host_header}'; success=0; for i in 1 2 3 4 5; do if [[ -n \"\$host_header\" ]]; then if curl -sS -m 10 -H \"Host: \$host_header\" \"\$url\" >/dev/null; then success=1; fi; else if curl -sS -m 10 \"\$url\" >/dev/null; then success=1; fi; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
+    --scripts "set -e; url=${escaped_url}; host_header=${escaped_host_header}; success=0; for i in 1 2 3 4 5; do if [[ -n \"\$host_header\" ]]; then if curl -sS -m 10 -H \"Host: \$host_header\" \"\$url\" >/dev/null; then success=1; fi; else if curl -sS -m 10 \"\$url\" >/dev/null; then success=1; fi; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
 
   echo "${marker}"
 }
