@@ -35,11 +35,20 @@ nr_warmup_sleep() {
 validate_nr_response() {
   local response="$1"
 
-  if ! echo "${response}" | jq -e '
-    (.errors // []) | length == 0 and
-    (.data.actor.account.nrql.results | type == "array")
-  ' >/dev/null 2>&1; then
+  if ! echo "${response}" | jq -e '.' >/dev/null 2>&1; then
     nr_log "Invalid NR response:"
+    echo "${response}" >&2
+    return 1
+  fi
+
+  if ! echo "${response}" | jq -e '(.errors // []) | length == 0' >/dev/null 2>&1; then
+    nr_log "NR response contains GraphQL errors:"
+    echo "${response}" >&2
+    return 1
+  fi
+
+  if ! echo "${response}" | jq -e '.data.actor.account.nrql.results | type == "array"' >/dev/null 2>&1; then
+    nr_log "NR response is missing data.actor.account.nrql.results:"
     echo "${response}" >&2
     return 1
   fi

@@ -70,8 +70,11 @@ main() {
   echo "[main] Waiting ${NR_INGESTION_WARMUP}s before taking the second-round baseline"
   sleep "${NR_INGESTION_WARMUP}"
 
-  local second_round_host second_round_target_ip
+  local second_round_host second_round_target_ip second_round_target_port
   second_round_host="neverssl.com"
+  second_round_target_port=80
+  # Resolve once here, then curl that exact IP in the second round, so the NRQL
+  # filter below matches the specific destination the VM actually contacted.
   second_round_target_ip=$(getent ahostsv4 "${second_round_host}" | awk 'NR == 1 { print $1; exit }')
   if [[ -z "${second_round_target_ip}" ]]; then
     echo "[main] Failed to resolve second-round target host ${second_round_host}"
@@ -81,15 +84,15 @@ main() {
   local second_round_start
   second_round_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
   local nrql_second_round_count
-  nrql_second_round_count="SELECT count(*) as count FROM Log, Log_VNET_Flows_Azure WHERE ${nr_vm_scope} AND destAddr = '${second_round_target_ip}' AND destPort = 80 SINCE '${second_round_start}'"
+  nrql_second_round_count="SELECT count(*) as count FROM Log, Log_VNET_Flows_Azure WHERE ${nr_vm_scope} AND destAddr = '${second_round_target_ip}' AND destPort = ${second_round_target_port} SINCE '${second_round_start}'"
   local second_round_baseline
   second_round_baseline=$(nr_count_for "${nrql_second_round_count}")
   echo "[main] Baseline NR count for VM-scoped ${second_round_host} traffic since ${second_round_start}: ${second_round_baseline}"
 
   echo "[main] Generating second round of traffic to verify incremental delivery"
   local marker2
-  marker2=$(generate_traffic "http://${second_round_target_ip}" "${second_round_host}")
-  echo "[main] Second traffic marker: ${marker2}; target: ${second_round_host} (${second_round_target_ip}:80)"
+  marker2=$(generate_traffic "http://${second_round_target_ip}:${second_round_target_port}" "${second_round_host}")
+  echo "[main] Second traffic marker: ${marker2}; target: ${second_round_host} (${second_round_target_ip}:${second_round_target_port})"
 
   wait_for_nr_count_increase "${nrql_second_round_count}" "${second_round_baseline}" || {
     echo "[main] NR count did not increase after second traffic round - incremental delivery check failed"
