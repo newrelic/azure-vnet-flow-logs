@@ -79,7 +79,11 @@ assert_required_attributes() {
   )
 
   for attr in "${attrs[@]}"; do
-    if ! jq -e --arg a "${attr}" '.data.actor.account.nrql.results[] | has($a)' "${json_file}" >/dev/null 2>&1; then
+    # jq -e on a stream only checks the LAST emitted value's truthiness, so
+    # '.results[] | has($a)' would pass as long as the last record has the
+    # attribute even if earlier ones don't. Collect into an array and require
+    # all of them.
+    if ! jq -e --arg a "${attr}" '[.data.actor.account.nrql.results[] | has($a)] | all' "${json_file}" >/dev/null 2>&1; then
       echo "Missing expected attribute in NR results: ${attr}"
       missing=1
     fi
