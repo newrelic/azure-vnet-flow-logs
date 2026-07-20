@@ -32,6 +32,19 @@ nr_warmup_sleep() {
   sleep "${NR_INGESTION_WARMUP}"
 }
 
+validate_nr_response() {
+  local response="$1"
+
+  if ! echo "${response}" | jq -e '
+    (.errors // []) | length == 0 and
+    (.data.actor.account.nrql.results | type == "array")
+  ' >/dev/null 2>&1; then
+    nr_log "Invalid NR response:"
+    echo "${response}" >&2
+    return 1
+  fi
+}
+
 wait_for_nr_logs() {
   local nrql="$1"
   local sleep_s="${NR_POLL_INITIAL}"
@@ -43,6 +56,7 @@ wait_for_nr_logs() {
     nr_log "NR query attempt $((attempt + 1))"
     local out
     out=$(nr_query "${nrql}")
+    validate_nr_response "${out}"
     echo "${out}" > "${NR_RESULTS_FILE}"
 
     local count
@@ -98,6 +112,7 @@ nr_count_for() {
   local nrql="$1"
   local nr_json
   nr_json=$(nr_query "${nrql}")
+  validate_nr_response "${nr_json}"
   echo "${nr_json}" | jq -r '.["data"].actor.account.nrql.results[0].count // 0'
 }
 

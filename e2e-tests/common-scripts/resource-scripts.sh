@@ -3,7 +3,7 @@ set -euo pipefail
 
 require_cmds() {
   local missing=0
-  for c in az jq curl uuidgen zip ssh-keygen; do
+  for c in az jq curl uuidgen zip ssh-keygen getent; do
     if ! command -v "$c" >/dev/null 2>&1; then
       echo "Missing required command: $c"
       missing=1
@@ -98,16 +98,25 @@ wait_for_blob() {
 }
 
 generate_traffic() {
+  local url="${1:-https://www.microsoft.com}"
+  local host_header="${2:-}"
   resource_log "Generating traffic from VM"
   local marker
   marker=$(uuidgen)
   echo "${marker}" > "${MARKER_FILE}"
 
+  local curl_cmd
+  curl_cmd="curl -sS -m 10"
+  if [[ -n "${host_header}" ]]; then
+    curl_cmd="${curl_cmd} -H 'Host: ${host_header}'"
+  fi
+  curl_cmd="${curl_cmd} '${url}' >/dev/null"
+
   az vm run-command invoke \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
     --command-id RunShellScript \
-    --scripts "set -e; success=0; for i in 1 2 3 4 5; do if curl -sS -m 10 https://www.microsoft.com >/dev/null; then success=1; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
+    --scripts "set -e; success=0; for i in 1 2 3 4 5; do if ${curl_cmd}; then success=1; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
 
   echo "${marker}"
 }
