@@ -27,10 +27,11 @@ main() {
   build_and_deploy_package
   verify_eventgrid_subscription
 
-  local marker vm_ip blob_name
+  local marker vm_ip vm_private_ip blob_name
   marker=$(generate_traffic)
   vm_ip=$(get_vm_ip)
-  echo "[main] Traffic marker: ${marker}; VM public IP: ${vm_ip}"
+  vm_private_ip=$(get_vm_private_ip)
+  echo "[main] Traffic marker: ${marker}; VM public IP: ${vm_ip}; VM private IP: ${vm_private_ip}"
 
   blob_name=$(wait_for_blob)
   echo "[main] First flow log blob: ${blob_name}"
@@ -43,6 +44,8 @@ main() {
   # counts cannot be polluted by unrelated flow-log data in the same account.
   local nr_scope
   nr_scope="instrumentation.provider = 'azure' AND instrumentation.name = 'vnet-app' AND virtualNetworkName = '${VNET_NAME}'"
+  local nr_vm_scope
+  nr_vm_scope="${nr_scope} AND (srcAddr = '${vm_private_ip}' OR destAddr = '${vm_private_ip}')"
 
   # Some NR accounts route this log type into a custom event type via a data
   # partition rule (confirmed on a real run: records landed in
@@ -59,16 +62,20 @@ main() {
     exit 1
   }
 
-  local baseline_count
-  baseline_count=$(nr_count_for "${nrql_count}")
-  echo "[main] Baseline NR count after first traffic round: ${baseline_count}"
+  local second_round_start
+  second_round_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+  local nrql_second_round_count
+  nrql_second_round_count="SELECT count(*) as count FROM Log, Log_VNET_Flows_Azure WHERE ${nr_vm_scope} SINCE '${second_round_start}'"
+  local second_round_baseline
+  second_round_baseline=$(nr_count_for "${nrql_second_round_count}")
+  echo "[main] Baseline NR count for VM-scoped logs since ${second_round_start}: ${second_round_baseline}"
 
   echo "[main] Generating second round of traffic to verify incremental delivery"
   local marker2
   marker2=$(generate_traffic)
   echo "[main] Second traffic marker: ${marker2}"
 
-  wait_for_nr_count_increase "${nrql_count}" "${baseline_count}" || {
+  wait_for_nr_count_increase "${nrql_second_round_count}" "${second_round_baseline}" || {
     echo "[main] NR count did not increase after second traffic round - incremental delivery check failed"
     exit 1
   }

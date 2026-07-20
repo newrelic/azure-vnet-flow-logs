@@ -107,13 +107,17 @@ generate_traffic() {
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
     --command-id RunShellScript \
-    --scripts "set -e; for i in 1 2 3 4 5; do curl -sS -m 10 https://www.microsoft.com >/dev/null || true; done; echo ${marker}" >/dev/null
+    --scripts "set -e; success=0; for i in 1 2 3 4 5; do if curl -sS -m 10 https://www.microsoft.com >/dev/null; then success=1; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
 
   echo "${marker}"
 }
 
 get_vm_ip() {
   az vm show -d --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" --query publicIps -o tsv
+}
+
+get_vm_private_ip() {
+  az vm show -d --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" --query privateIps -o tsv
 }
 
 download_blob() {
