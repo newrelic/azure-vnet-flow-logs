@@ -62,11 +62,13 @@ main() {
     exit 1
   }
 
-  # Give the first round a short drain window before starting the second-round
+  # Give the first round a drain window before starting the second-round
   # verification window, so the new baseline is less likely to miss late-arriving
-  # records from the first round and then misattribute them to the second.
-  echo "[main] Waiting briefly before taking the second-round baseline"
-  sleep 5
+  # records from the first round and then misattribute them to the second. A
+  # flat 5s isn't enough - measured real delivery latency for this pipeline is
+  # on the order of minutes, so reuse NR_INGESTION_WARMUP as the drain length.
+  echo "[main] Waiting ${NR_INGESTION_WARMUP}s before taking the second-round baseline"
+  sleep "${NR_INGESTION_WARMUP}"
 
   local second_round_start
   second_round_start=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
