@@ -102,12 +102,12 @@ The `authenticationMode` parameter selects how the function authenticates to the
 
 The `functionAppPlan` parameter selects the Azure Functions hosting plan for the forwarder. Four options are available:
 
-| Plan | When to pick | Cold starts | Private networking | Cost profile |
-|------|--------------|-------------|--------------------|--------------|
-| **FlexConsumption** (default) | Any region where Flex Consumption is Generally Available (~30 regions as of mid-2026). Modern serverless with native VNet integration; scales elastically. | Reduced | Supported | Pay-per-execution + memory-second billing |
-| **ElasticPremium** | Production or bursty workloads in regions where Flex is not GA (e.g. Azure Gov, Azure China, some EU/APAC secondary regions), or workloads with a strict no-cold-start SLA. | None (pre-warmed) | Supported | ~$150/mo baseline (EP1) plus per-instance scale-out |
-| **Basic** | Small tenants or dev/test that need private networking but can't justify Elastic Premium's baseline. Not suitable for high-throughput. | Yes on scale-out (mitigated by `alwaysOn: true`) | Supported | ~$13/mo (B1, always-on) |
-| **Consumption** | Public-network workloads where private networking is not required and pay-per-execution billing is preferred. | Yes, per invocation | **Not supported** | Pay-per-execution (free grant included) |
+| Plan | When to pick | Cold starts | Private networking | Gov Cloud support | Cost profile |
+|------|--------------|-------------|--------------------|-------------------|--------------|
+| **FlexConsumption** (default) | Any region where Flex Consumption is Generally Available (~30 regions as of mid-2026). Modern serverless with native VNet integration; scales elastically. | Reduced | Supported | ❌ | Pay-per-execution + memory-second billing |
+| **ElasticPremium** | Production or bursty workloads in regions where Flex is not GA (e.g. Azure Gov, Azure China, some EU/APAC secondary regions), or workloads with a strict no-cold-start SLA. | None (pre-warmed) | Supported | ✅ | ~$150/mo baseline (EP1) plus per-instance scale-out |
+| **Basic** | Small tenants or dev/test that need private networking but can't justify Elastic Premium's baseline. Not suitable for high-throughput. | Yes on scale-out (mitigated by `alwaysOn: true`) | Supported | ✅ | ~$13/mo (B1, always-on) |
+| **Consumption** | Public-network workloads where private networking is not required and pay-per-execution billing is preferred. | Yes, per invocation | **Not supported** | ✅ | Pay-per-execution (free grant included) |
 
 Deploy with a specific plan by adding `functionAppPlan='<plan-name>'` to the `--parameters` of either deployment command above.
 
