@@ -68,6 +68,7 @@ az deployment group create \
 | `maxEventBatchSize` | No | Max Event Grid blob-created notifications per function invocation (blobs-per-invocation, not log events). Overrides `host.json`. (default: 100) |
 | `minEventBatchSize` | No | Min Event Grid blob-created notifications per function invocation. Overrides `host.json`. (default: 20) |
 | `maxWaitTime` | No | Max time to build up a batch before invoking the function, in `HH:MM:SS`. Overrides `host.json`. (default: 00:00:30) |
+| `functionAppPlan` | No | Function App hosting plan: `FlexConsumption` (default), `ElasticPremium`, `Basic`, or `Consumption`. See [Function App plan](#function-app-plan). |
 | `functionLogLevel` | No | Default log level for the forwarder: `Trace`, `Debug`, `Information` (default), `Warning`, or `Error` |
 | `eventHubScalingMode` | No | Event Hub scaling profile: `Basic` (default, 4 partitions) or `Enterprise` (32 partitions, auto-inflate) |
 | `disablePublicAccessToStorageAccount` | No | Enable private networking with VNet and private endpoints (default: false) |
@@ -76,7 +77,7 @@ az deployment group create \
 ### Resources Created
 
 The template deploys:
-- **Function App** (Flex Consumption plan, Node.js 22)
+- **Function App** on the hosting plan selected via `functionAppPlan` (default: Flex Consumption on Linux; non-Flex plans run Windows). Node.js 22.
 - **Event Hub Namespace** with Event Hub and consumer group
 - **Event Grid System Topic** and subscription (filters for PT1H.json blob events)
 - **Storage Account** for function runtime and cursor table
@@ -96,6 +97,23 @@ The `authenticationMode` parameter selects how the function authenticates to the
 - **`Local Authentication`**: the function uses shared-key connection strings (`EVENTHUB_CONSUMER_CONNECTION`, `SOURCE_STORAGE_CONNECTION`, `CURSOR_STORAGE_CONNECTION`). Use this when the deploying principal cannot grant the role assignments Managed Identity requires — for example on a bring-your-own flow-logs storage account where the deployer lacks `roleAssignments/write`.
 
   Deploy with Local Authentication by adding `authenticationMode='Local Authentication'` to the `--parameters` of either deployment command above.
+
+### Function App plan
+
+The `functionAppPlan` parameter selects the Azure Functions hosting plan for the forwarder. Four options are available:
+
+| Plan | When to pick | Cold starts | Private networking | Gov Cloud support | Cost profile |
+|------|--------------|-------------|--------------------|-------------------|--------------|
+| **FlexConsumption** (default) | Any region where Flex Consumption is Generally Available (~30 regions as of mid-2026). Modern serverless with native VNet integration; scales elastically. | Reduced | Supported | ❌ | Pay-per-execution + memory-second billing |
+| **ElasticPremium** | Production or bursty workloads in regions where Flex is not GA (e.g. Azure Gov, Azure China, some EU/APAC secondary regions), or workloads with a strict no-cold-start SLA. | None (pre-warmed) | Supported | ✅ | ~$150/mo baseline (EP1) plus per-instance scale-out |
+| **Basic** | Small tenants or dev/test that need private networking but can't justify Elastic Premium's baseline. Not suitable for high-throughput. | Yes on scale-out (mitigated by `alwaysOn: true`) | Supported | ✅ | ~$13/mo (B1, always-on) |
+| **Consumption** | Public-network workloads where private networking is not required and pay-per-execution billing is preferred. | Yes, per invocation | **Not supported** | ✅ | Pay-per-execution (free grant included) |
+
+Deploy with a specific plan by adding `functionAppPlan='<plan-name>'` to the `--parameters` of either deployment command above.
+
+**Notes:**
+
+- **Consumption + private networking is architecturally unsupported.** If you combine `functionAppPlan=Consumption` with `disablePublicAccessToStorageAccount=true`, the deployment fails within the first minute with a clear error message. Use `FlexConsumption`, `ElasticPremium`, or `Basic` for private-mode deployments.
 
 ## Configuration
 
