@@ -138,6 +138,14 @@ build_and_deploy_package() {
       --resource-group "${RESOURCE_GROUP}" \
       --name "${FUNCTION_APP_NAME}" \
       --src "${DEPLOY_PACKAGE}" 2>&1); then
+      # config-zip returning success only means Kudu accepted and extracted the
+      # package; on Flex Consumption the deploy also triggers a Kudu container
+      # respecialization restart that finishes asynchronously after the CLI call
+      # returns (see https://github.com/Azure/azure-cli/issues/33184). Give that
+      # restart time to settle before the caller checks `az functionapp show`
+      # state, or it can transiently read back empty/not-found.
+      stack_log "Package deployed; waiting ${FUNCTION_APP_RESPECIALIZE_WAIT}s for Flex Consumption respecialization restart to settle"
+      sleep "${FUNCTION_APP_RESPECIALIZE_WAIT}"
       return 0
     fi
     if [[ ${attempt} -ge ${max_attempts} ]]; then
