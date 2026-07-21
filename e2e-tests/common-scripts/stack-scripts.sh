@@ -9,41 +9,32 @@ deploy_forwarder_template() {
   stack_log "Deploying forwarder resources via ARM template"
   # Parameter names must match arm/azuredeploy-vnetflowlogsforwarder.json exactly.
   # The template derives location from the resource group, so no location param is passed.
-  # The Event Grid -> Event Hub subscription's dependsOn on the delivery identity's
-  # role assignment only guarantees ARM created that resource, not that Azure RBAC
-  # has finished propagating the permission - so a fresh deployment can intermittently
-  # fail with "Managed Identity Authorization Error" on the subscription. Retry the
-  # whole deployment rather than fail outright: it's idempotent, ARM reconciles
-  # already-succeeded resources instead of recreating them.
-  local attempt=1 max_attempts=4 sleep_s=30 out
-  while true; do
-    if out=$(az deployment group create \
-      --resource-group "${RESOURCE_GROUP}" \
-      --name "${FORWARDER_DEPLOYMENT_NAME}" \
-      --template-file "${ARM_FORWARDER_TEMPLATE}" \
-      --parameters \
-        newRelicIngestLicenseKey="${NR_LICENSE_KEY}" \
-        newRelicEndpoint="${NR_LOG_ENDPOINT}" \
-        eventHubScalingMode="${SCALING_MODE}" \
-        disablePublicAccessToStorageAccount="${DISABLE_PUBLIC_ACCESS_TO_STORAGE}" \
-        maxRetries="${MAX_RETRIES}" \
-        retryInterval="${RETRY_INTERVAL}" \
-        maxEventBatchSize="${EVENT_HUB_BATCH_SIZE}" \
-        functionLogLevel="${FUNCTION_LOG_LEVEL}" \
-        flowLogsStorageAccountName="${SOURCE_STORAGE_ACCOUNT_NAME}" \
-      --query properties.outputs -o json); then
-      echo "${out}" > "${FORWARDER_OUTPUTS_FILE}"
-      break
-    fi
-    if [[ ${attempt} -ge ${max_attempts} ]]; then
-      echo "Forwarder deployment failed after ${max_attempts} attempts"
-      return 1
-    fi
-    stack_log "Forwarder deployment attempt ${attempt} failed (possible RBAC propagation race on Event Grid delivery identity); retrying in ${sleep_s}s"
-    sleep "${sleep_s}"
-    attempt=$((attempt + 1))
-    sleep_s=$((sleep_s * 2))
-  done
+  # Single attempt, no retry: a customer only gets one shot at this, so the test
+  # shouldn't paper over template flakiness (e.g. RBAC propagation races) either.
+  local out err_file
+  err_file=$(mktemp)
+  if ! out=$(az deployment group create \
+    --resource-group "${RESOURCE_GROUP}" \
+    --name "${FORWARDER_DEPLOYMENT_NAME}" \
+    --template-file "${ARM_FORWARDER_TEMPLATE}" \
+    --parameters \
+      newRelicIngestLicenseKey="${NR_LICENSE_KEY}" \
+      newRelicEndpoint="${NR_LOG_ENDPOINT}" \
+      eventHubScalingMode="${SCALING_MODE}" \
+      disablePublicAccessToStorageAccount="${DISABLE_PUBLIC_ACCESS_TO_STORAGE}" \
+      maxRetries="${MAX_RETRIES}" \
+      retryInterval="${RETRY_INTERVAL}" \
+      maxEventBatchSize="${EVENT_HUB_BATCH_SIZE}" \
+      functionLogLevel="${FUNCTION_LOG_LEVEL}" \
+      flowLogsStorageAccountName="${SOURCE_STORAGE_ACCOUNT_NAME}" \
+    --query properties.outputs -o json 2>"${err_file}"); then
+    echo "Forwarder deployment failed:"
+    cat "${err_file}"
+    rm -f "${err_file}"
+    return 1
+  fi
+  rm -f "${err_file}"
+  echo "${out}" > "${FORWARDER_OUTPUTS_FILE}"
 
   resolve_forwarder_resources
   export SOURCE_STORAGE FUNCTION_APP_NAME EVENTHUB_NAMESPACE EVENTHUB_NAME CURSOR_STORAGE
@@ -161,6 +152,45 @@ build_and_deploy_package() {
   done
 }
 
+verify_forwarder_resources() {
+  stack_log "Verifying forwarder resources are provisioned"
+
+  local source_state
+  source_state=$(az storage account show --name "${SOURCE_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if [[ "${source_state}" != "Succeeded" ]]; then
+    echo "Source storage account ${SOURCE_STORAGE} not provisioned (state=${source_state:-not found})"
+    return 1
+  fi
+
+  local cursor_state
+  cursor_state=$(az storage account show --name "${CURSOR_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if [[ "${cursor_state}" != "Succeeded" ]]; then
+    echo "Cursor storage account ${CURSOR_STORAGE} not provisioned (state=${cursor_state:-not found})"
+    return 1
+  fi
+
+  local function_state
+  function_state=$(az functionapp show --name "${FUNCTION_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query state -o tsv 2>/dev/null || true)
+  if [[ "${function_state}" != "Running" ]]; then
+    echo "Function app ${FUNCTION_APP_NAME} not running (state=${function_state:-not found})"
+    return 1
+  fi
+
+  local eventhub_ns_state
+  eventhub_ns_state=$(az eventhubs namespace show --name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if [[ "${eventhub_ns_state}" != "Succeeded" ]]; then
+    echo "Event Hub namespace ${EVENTHUB_NAMESPACE} not provisioned (state=${eventhub_ns_state:-not found})"
+    return 1
+  fi
+
+  if ! az eventhubs eventhub show --name "${EVENTHUB_NAME}" --namespace-name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" >/dev/null 2>&1; then
+    echo "Event Hub ${EVENTHUB_NAME} not found in namespace ${EVENTHUB_NAMESPACE}"
+    return 1
+  fi
+
+  verify_eventgrid_subscription
+}
+
 verify_eventgrid_subscription() {
   stack_log "Verifying Event Grid -> Event Hub subscription wiring"
   local storage_id
@@ -201,7 +231,7 @@ show_deployment_failures() {
     -o table || true
 }
 
-teardown_with_backoff() {
+teardown() {
   # The flow log lives on the Network Watcher (in NETWORK_WATCHER_RG), not in the
   # run resource group, so deleting the run RG never removes it. Delete it first,
   # best-effort, to avoid leaving a flow log pointing at deleted resources.
@@ -212,31 +242,8 @@ teardown_with_backoff() {
       --name "${RUN_ID}-flowlog" >/dev/null 2>&1 || true
   fi
 
-  stack_log "Deleting resource group"
+  # Fire-and-forget: nothing downstream depends on the resource group actually
+  # being gone by the time the run ends, so don't block the job waiting for it.
+  stack_log "Deleting resource group ${RESOURCE_GROUP} (not waiting for completion)"
   az group delete --name "${RESOURCE_GROUP}" --yes --no-wait >/dev/null || true
-
-  local sleep_s=10
-  local max_sleep=120
-  for _ in {1..10}; do
-    # `az group exists` prints a clean true/false and is the authoritative check.
-    # A network/auth error also makes it fail non-zero, so on failure we don't know
-    # the group is gone - only an explicit "false" counts as deleted, otherwise we
-    # keep polling instead of risking a false "deleted" report.
-    local exists
-    exists=$(az group exists --name "${RESOURCE_GROUP}" 2>/dev/null) || exists="unknown"
-    if [[ "${exists}" == "false" ]]; then
-      stack_log "Resource group deleted"
-      return 0
-    fi
-    sleep "${sleep_s}"
-    if [[ ${sleep_s} -lt ${max_sleep} ]]; then
-      sleep_s=$((sleep_s * 2))
-      if [[ ${sleep_s} -gt ${max_sleep} ]]; then
-        sleep_s=${max_sleep}
-      fi
-    fi
-  done
-
-  stack_log "Resource group delete not confirmed after retry budget - check ${RESOURCE_GROUP} manually"
-  return 1
 }

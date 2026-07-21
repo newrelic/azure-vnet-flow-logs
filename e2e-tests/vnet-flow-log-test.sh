@@ -9,7 +9,7 @@ source "${ROOT_DIR}/e2e-tests/common-scripts/logs-scripts.sh"
 
 cleanup() {
   echo "[main] Cleanup start"
-  teardown_with_backoff || true
+  teardown || true
 }
 trap cleanup EXIT
 
@@ -25,7 +25,7 @@ main() {
   deploy_traffic_template
   deploy_flowlog_template
   build_and_deploy_package
-  verify_eventgrid_subscription
+  verify_forwarder_resources
 
   local marker vm_ip vm_private_ip blob_name
   marker=$(generate_traffic)
