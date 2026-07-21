@@ -156,35 +156,48 @@ verify_forwarder_resources() {
   stack_log "Verifying forwarder resources are provisioned"
 
   local source_state
-  source_state=$(az storage account show --name "${SOURCE_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if ! source_state=$(az storage account show --name "${SOURCE_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>&1); then
+    echo "Failed to query source storage account ${SOURCE_STORAGE}: ${source_state}"
+    return 1
+  fi
   if [[ "${source_state}" != "Succeeded" ]]; then
-    echo "Source storage account ${SOURCE_STORAGE} not provisioned (state=${source_state:-not found})"
+    echo "Source storage account ${SOURCE_STORAGE} not provisioned (state=${source_state:-empty})"
     return 1
   fi
 
   local cursor_state
-  cursor_state=$(az storage account show --name "${CURSOR_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if ! cursor_state=$(az storage account show --name "${CURSOR_STORAGE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>&1); then
+    echo "Failed to query cursor storage account ${CURSOR_STORAGE}: ${cursor_state}"
+    return 1
+  fi
   if [[ "${cursor_state}" != "Succeeded" ]]; then
-    echo "Cursor storage account ${CURSOR_STORAGE} not provisioned (state=${cursor_state:-not found})"
+    echo "Cursor storage account ${CURSOR_STORAGE} not provisioned (state=${cursor_state:-empty})"
     return 1
   fi
 
   local function_state
-  function_state=$(az functionapp show --name "${FUNCTION_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query state -o tsv 2>/dev/null || true)
+  if ! function_state=$(az functionapp show --name "${FUNCTION_APP_NAME}" --resource-group "${RESOURCE_GROUP}" --query state -o tsv 2>&1); then
+    echo "Failed to query function app ${FUNCTION_APP_NAME}: ${function_state}"
+    return 1
+  fi
   if [[ "${function_state}" != "Running" ]]; then
-    echo "Function app ${FUNCTION_APP_NAME} not running (state=${function_state:-not found})"
+    echo "Function app ${FUNCTION_APP_NAME} not running (state=${function_state:-empty})"
     return 1
   fi
 
   local eventhub_ns_state
-  eventhub_ns_state=$(az eventhubs namespace show --name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>/dev/null || true)
+  if ! eventhub_ns_state=$(az eventhubs namespace show --name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" --query provisioningState -o tsv 2>&1); then
+    echo "Failed to query Event Hub namespace ${EVENTHUB_NAMESPACE}: ${eventhub_ns_state}"
+    return 1
+  fi
   if [[ "${eventhub_ns_state}" != "Succeeded" ]]; then
-    echo "Event Hub namespace ${EVENTHUB_NAMESPACE} not provisioned (state=${eventhub_ns_state:-not found})"
+    echo "Event Hub namespace ${EVENTHUB_NAMESPACE} not provisioned (state=${eventhub_ns_state:-empty})"
     return 1
   fi
 
-  if ! az eventhubs eventhub show --name "${EVENTHUB_NAME}" --namespace-name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" >/dev/null 2>&1; then
-    echo "Event Hub ${EVENTHUB_NAME} not found in namespace ${EVENTHUB_NAMESPACE}"
+  local eventhub_err
+  if ! eventhub_err=$(az eventhubs eventhub show --name "${EVENTHUB_NAME}" --namespace-name "${EVENTHUB_NAMESPACE}" --resource-group "${RESOURCE_GROUP}" 2>&1 >/dev/null); then
+    echo "Event Hub ${EVENTHUB_NAME} not found in namespace ${EVENTHUB_NAMESPACE}: ${eventhub_err}"
     return 1
   fi
 
