@@ -13,11 +13,12 @@ param authenticationMode string = 'Managed Identity'
 @description('Optional. The storage account where Azure writes your VNet flow logs. Must be in the same resource group as this deployment. Leave blank to provision a new one.')
 param flowLogsStorageAccountName string = ''
 
-@description('Optional. The Logs API endpoint for your New Relic account region.')
+@description('Optional. The New Relic Logs API endpoint. Select based on account region or compliance requirement.')
 @allowed([
   'https://log-api.newrelic.com/log/v1'
   'https://log-api.eu.newrelic.com/log/v1'
   'https://log-api.jp.nr-data.net/log/v1'
+  'https://gov-log-api.newrelic.com/log/v1'
 ])
 param newRelicEndpoint string = 'https://log-api.newrelic.com/log/v1'
 
@@ -29,6 +30,15 @@ param maxRetries int = 3
 
 @description('Optional. Retry interval in milliseconds when sending logs to New Relic.')
 param retryInterval int = 2000
+
+@description('Optional. Function App hosting plan. FlexConsumption (default) is preferred where supported (~30 Azure regions as of mid-2026). ElasticPremium is the recommended fallback for regions where Flex is unavailable — production or bursty workloads that need pre-warmed capacity. Basic is a cheap dedicated tier suitable for small tenants that still need private networking (max 3 instances). Consumption is a pay-per-execution tier for public dev/test workloads only — deployment will fail if combined with disablePublicAccessToStorageAccount=true.')
+@allowed([
+  'FlexConsumption'
+  'ElasticPremium'
+  'Basic'
+  'Consumption'
+])
+param functionAppPlan string = 'FlexConsumption'
 
 @description('Optional. Default log level for the forwarder.')
 @allowed([
@@ -137,7 +147,7 @@ var localAuthAppSettings = [
   }
   {
     name: 'SOURCE_STORAGE_CONNECTION'
-    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${listKeys(resourceId('Microsoft.Storage/storageAccounts', resolvedFlowLogsStorageName), '2024-01-01').keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+    value: 'DefaultEndpointsProtocol=https;AccountName=${resolvedFlowLogsStorageName};AccountKey=${flowLogsStorageRef.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
   }
   {
     name: 'CURSOR_STORAGE_CONNECTION'
@@ -171,14 +181,126 @@ var functionStorageFilePrivateEndpointName = '${functionStorageAccountName}-file
 var functionStorageQueuePrivateEndpointName = '${functionStorageAccountName}-queue-pe'
 var functionStorageTablePrivateEndpointName = '${functionStorageAccountName}-table-pe'
 var functionAppPrivateEndpointName = '${functionAppName}-sites-pe'
-var flexConsumptionASP = {
-  kind: 'functionapp,linux'
-  properties: {
-    reserved: true
+var planConfig = {
+  FlexConsumption: {
+    kind: 'functionapp,linux'
+    properties: {
+      reserved: true
+    }
+    sku: {
+      tier: 'FlexConsumption'
+      name: 'FC1'
+    }
+    functionAppConfig: {
+      deployment: {
+        storage: {
+          type: 'blobContainer'
+          value: 'https://${functionStorageAccountName}.blob.${environment().suffixes.storage}/deployments'
+          authentication: {
+            type: 'SystemAssignedIdentity'
+          }
+        }
+      }
+      scaleAndConcurrency: {
+        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
+        instanceMemoryMB: 2048
+      }
+      runtime: {
+        name: 'node'
+        version: '22'
+      }
+    }
+    siteConfigOverrides: {}
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.App/environments'
+    usesRunFromPackage: false
+    usesIdentityStorage: true
+    functionAppReserved: true
   }
-  sku: {
-    tier: 'FlexConsumption'
-    name: 'FC1'
+  ElasticPremium: {
+    kind: 'elastic'
+    properties: {
+      elasticScaleEnabled: true
+      maximumElasticWorkerCount: (eventHubScalingMode == 'Enterprise' ? 20 : 4)
+      zoneRedundant: false
+    }
+    sku: {
+      tier: 'ElasticPremium'
+      name: 'EP1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {
+      functionsRuntimeScaleMonitoringEnabled: true
+    }
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.Web/serverFarms'
+    usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
+  }
+  Basic: {
+    kind: 'app'
+    properties: {
+      numberOfWorkers: 1
+      targetWorkerCount: 1
+      zoneRedundant: false
+    }
+    sku: {
+      tier: 'Basic'
+      name: 'B1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {
+      alwaysOn: true
+    }
+    extraAppSettings: []
+    subnetDelegation: 'Microsoft.Web/serverFarms'
+    usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
+  }
+  Consumption: {
+    kind: 'functionapp'
+    properties: {
+      numberOfWorkers: 1
+      computeMode: 'Dynamic'
+    }
+    sku: {
+      tier: 'Dynamic'
+      name: 'Y1'
+    }
+    functionAppConfig: null
+    siteConfigOverrides: {}
+    extraAppSettings: []
+    subnetDelegation: ''
+    usesRunFromPackage: true
+    usesIdentityStorage: false
+    functionAppReserved: false
+  }
+}
+var pc = planConfig[functionAppPlan]
+var baseSiteConfig = {
+  minTlsVersion: '1.2'
+  scmMinTlsVersion: '1.2'
+  ftpsState: 'Disabled'
+}
+var runFromPackageSetting = (pc.usesRunFromPackage && disablePublicAccessToStorageAccount) ? [
+  {
+    name: 'WEBSITE_RUN_FROM_PACKAGE'
+    value: vnetFlowLogsForwarderFunctionArtifact
+  }
+] : []
+
+resource invalidConsumptionPrivateCombo 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (functionAppPlan == 'Consumption' && disablePublicAccessToStorageAccount) {
+  name: 'nrvnetflowlogs-validate-plan-${uniqueResourceNameSuffix}'
+  location: effectiveLocation
+  kind: 'AzureCLI'
+  properties: {
+    azCliVersion: '2.61.0'
+    timeout: 'PT5M'
+    retentionInterval: 'PT1H'
+    cleanupPreference: 'OnSuccess'
+    scriptContent: 'echo \'ERROR: Consumption (Y1) plan does not support private networking. Choose ElasticPremium or Basic for a private deployment, or set disablePublicAccessToStorageAccount=false to keep Consumption on the public network.\' >&2; exit 1'
   }
 }
 
@@ -355,49 +477,28 @@ resource cursorTable 'Microsoft.Storage/storageAccounts/tableServices/tables@202
 resource servicePlan 'Microsoft.Web/serverfarms@2024-11-01' = {
   name: servicePlanName
   location: effectiveLocation
-  kind: flexConsumptionASP.kind
-  properties: flexConsumptionASP.properties
-  sku: flexConsumptionASP.sku
+  kind: pc.kind
+  properties: pc.properties
+  sku: pc.sku
 }
 
 resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
   name: functionAppName
   location: effectiveLocation
-  kind: 'functionapp,linux'
+  kind: (pc.functionAppReserved ? 'functionapp,linux' : 'functionapp')
   identity: {
     type: 'SystemAssigned'
   }
   properties: {
     serverFarmId: servicePlan.id
+    reserved: pc.functionAppReserved
     httpsOnly: true
     publicNetworkAccess: (disablePublicAccessToStorageAccount ? 'Disabled' : 'Enabled')
-    virtualNetworkSubnetId: (disablePublicAccessToStorageAccount ? functionsSubnet.id : null)
-    vnetRouteAllEnabled: disablePublicAccessToStorageAccount
-    functionAppConfig: {
-      deployment: {
-        storage: {
-          type: 'blobContainer'
-          value: 'https://${functionStorageAccountName}.blob.${environment().suffixes.storage}/deployments'
-          authentication: {
-            type: 'SystemAssignedIdentity'
-          }
-        }
-      }
-      scaleAndConcurrency: {
-        maximumInstanceCount: (eventHubScalingMode == 'Enterprise' ? 32 : 4)
-        instanceMemoryMB: 2048
-      }
-      runtime: {
-        name: 'node'
-        version: '22'
-      }
-    }
-    siteConfig: {
+    virtualNetworkSubnetId: (disablePublicAccessToStorageAccount && !empty(pc.subnetDelegation) ? functionsSubnet.id : null)
+    vnetRouteAllEnabled: (functionAppPlan == 'FlexConsumption' && disablePublicAccessToStorageAccount)
+    functionAppConfig: pc.functionAppConfig
+    siteConfig: union(baseSiteConfig, pc.siteConfigOverrides, {
       appSettings: concat([
-        {
-          name: 'AzureWebJobsStorage__accountName'
-          value: functionStorageAccountName
-        }
         {
           name: 'AUTHENTICATION_MODE'
           value: authenticationMode
@@ -462,13 +563,30 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
           name: 'AzureFunctionsJobHost__extensions__eventHubs__maxWaitTime'
           value: maxWaitTime
         }
-      ], useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings)
-      minTlsVersion: '1.2'
-      scmMinTlsVersion: '1.2'
-      ftpsState: 'Disabled'
-    }
+      ], (functionAppPlan == 'FlexConsumption' ? [] : [
+        {
+          name: 'FUNCTIONS_WORKER_RUNTIME'
+          value: 'node'
+        }
+        {
+          name: 'WEBSITE_NODE_DEFAULT_VERSION'
+          value: '~22'
+        }
+      ]), ((pc.usesIdentityStorage || useManagedIdentity) ? [
+        {
+          name: 'AzureWebJobsStorage__accountName'
+          value: functionStorageAccountName
+        }
+      ] : [
+        {
+          name: 'AzureWebJobsStorage'
+          value: 'DefaultEndpointsProtocol=https;AccountName=${functionStorageAccountName};AccountKey=${functionStorageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+        }
+      ]), useManagedIdentity ? managedIdentityAppSettings : localAuthAppSettings, pc.extraAppSettings, runFromPackageSetting)
+    })
   }
   dependsOn: [
+    invalidConsumptionPrivateCombo
     functionStorageAccountName_default_deployments
     cursorTable
     functionStorageBlobPrivateEndpointDnsGroup
@@ -476,6 +594,14 @@ resource functionApp 'Microsoft.Web/sites@2024-11-01' = {
     functionStorageQueuePrivateEndpointDnsGroup
     functionStorageTablePrivateEndpointDnsGroup
   ]
+}
+
+resource functionAppZipDeploy 'Microsoft.Web/sites/extensions@2022-03-01' = if (pc.usesRunFromPackage && !disablePublicAccessToStorageAccount) {
+  parent: functionApp
+  name: 'ZipDeploy'
+  properties: {
+    packageUri: vnetFlowLogsForwarderFunctionArtifact
+  }
 }
 
 resource functionAppStorageBlobDataOwnerAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
@@ -600,11 +726,11 @@ resource virtualNetwork 'Microsoft.Network/virtualNetworks@2024-05-01' = if (dis
         name: functionsSubnetName
         properties: {
           addressPrefix: '10.0.0.0/24'
-          delegations: [
+          delegations: empty(pc.subnetDelegation) ? [] : [
             {
               name: 'delegation'
               properties: {
-                serviceName: 'Microsoft.App/environments'
+                serviceName: pc.subnetDelegation
               }
             }
           ]
@@ -986,7 +1112,7 @@ resource eventHubNamespacePrivateEndpointDnsGroup 'Microsoft.Network/privateEndp
   }
 }
 
-resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
+resource deploymentScript 'Microsoft.Resources/deploymentScripts@2023-08-01' = if (functionAppPlan == 'FlexConsumption') {
   name: deploymentScriptName
   location: effectiveLocation
   kind: 'AzureCLI'
@@ -1089,5 +1215,6 @@ resource eventGridSystemTopicName_eventGridSubscription 'Microsoft.EventGrid/sys
   }
   dependsOn: [
     eventGridSystemTopicEventHubsDataSenderAssignment
+    functionApp
   ]
 }
