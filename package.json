@@ -6,7 +6,8 @@
   "scripts": {
     "lint": "eslint VNetFlowForwarder __tests__",
     "package": "npm ci --omit=dev && zip -r VNetFlowForwarder.zip VNetFlowForwarder/ host.json package.json node_modules/",
-    "test": "jest"
+    "test": "jest",
+    "test:e2e": "./e2e-tests/vnet-flow-log-test.sh"
   },
   "jest": {
     "collectCoverage": true,
