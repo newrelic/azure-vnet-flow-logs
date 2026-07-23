@@ -14,7 +14,13 @@ code, the source code can be found at [git+https://github.com/newrelic/azure-vne
 
 **[dependencies](#dependencies)**
 
+* [@azure/data-tables](#azuredata-tables)
+* [@azure/event-hubs](#azureevent-hubs)
 * [@azure/functions](#azurefunctions)
+* [@azure/identity](#azureidentity)
+* [@azure/storage-blob](#azurestorage-blob)
+* [axios-retry](#axios-retry)
+* [axios](#axios)
 
 **[devDependencies](#devDependencies)**
 
@@ -25,23 +31,80 @@ code, the source code can be found at [git+https://github.com/newrelic/azure-vne
 * [@semantic-release/github](#semantic-releasegithub)
 * [@semantic-release/npm](#semantic-releasenpm)
 * [@semantic-release/release-notes-generator](#semantic-releaserelease-notes-generator)
-* [axios-retry](#axios-retry)
-* [axios](#axios)
 * [eslint-config-prettier](#eslint-config-prettier)
 * [eslint-plugin-prettier](#eslint-plugin-prettier)
 * [eslint](#eslint)
 * [jest](#jest)
 * [prettier](#prettier)
 * [semantic-release-plugin-update-version-in-files](#semantic-release-plugin-update-version-in-files)
+* [semantic-release](#semantic-release)
 * [uuid](#uuid)
 * [winston](#winston)
 
 
 ## dependencies
 
+### @azure/data-tables
+
+This product includes source derived from [@azure/data-tables](https://github.com/Azure/azure-sdk-for-js) ([v13.3.2](https://github.com/Azure/azure-sdk-for-js/tree/v13.3.2)), distributed under the [MIT License](https://github.com/Azure/azure-sdk-for-js/blob/v13.3.2/LICENSE):
+
+```
+Copyright (c) Microsoft Corporation.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+### @azure/event-hubs
+
+This product includes source derived from [@azure/event-hubs](https://github.com/Azure/azure-sdk-for-js) ([v5.12.2](https://github.com/Azure/azure-sdk-for-js/tree/v5.12.2)), distributed under the [MIT License](https://github.com/Azure/azure-sdk-for-js/blob/v5.12.2/License):
+
+```
+The MIT License (MIT)
+
+Copyright (c) 2020 Microsoft
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
 ### @azure/functions
 
-This product includes source derived from [@azure/functions](https://github.com/Azure/azure-functions-nodejs-library) ([v4.11.2](https://github.com/Azure/azure-functions-nodejs-library/tree/v4.11.2)), distributed under the [MIT License](https://github.com/Azure/azure-functions-nodejs-library/blob/v4.11.2/LICENSE):
+This product includes source derived from [@azure/functions](https://github.com/Azure/azure-functions-nodejs-library) ([v4.16.1](https://github.com/Azure/azure-functions-nodejs-library/tree/v4.16.1)), distributed under the [MIT License](https://github.com/Azure/azure-functions-nodejs-library/blob/v4.16.1/LICENSE):
 
 ```
     MIT License
@@ -68,12 +131,105 @@ This product includes source derived from [@azure/functions](https://github.com/
 
 ```
 
+### @azure/identity
+
+This product includes source derived from [@azure/identity](https://github.com/Azure/azure-sdk-for-js) ([v4.13.1](https://github.com/Azure/azure-sdk-for-js/tree/v4.13.1)), distributed under the [MIT License](https://github.com/Azure/azure-sdk-for-js/blob/v4.13.1/LICENSE):
+
+```
+Copyright (c) Microsoft Corporation.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+### @azure/storage-blob
+
+This product includes source derived from [@azure/storage-blob](https://github.com/Azure/azure-sdk-for-js) ([v12.32.0](https://github.com/Azure/azure-sdk-for-js/tree/v12.32.0)), distributed under the [MIT License](https://github.com/Azure/azure-sdk-for-js/blob/v12.32.0/LICENSE):
+
+```
+Copyright (c) Microsoft Corporation.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED *AS IS*, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
+### axios-retry
+
+This product includes source derived from [axios-retry](https://github.com/softonic/axios-retry) ([v4.5.0](https://github.com/softonic/axios-retry/tree/v4.5.0)), distributed under the [Apache-2.0 License](https://github.com/softonic/axios-retry/blob/v4.5.0/LICENSE):
+
+```
+Copyright 2019 Softonic International S.A.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
+
+### axios
+
+This product includes source derived from [axios](https://github.com/axios/axios) ([v1.18.1](https://github.com/axios/axios/tree/v1.18.1)), distributed under the [MIT License](https://github.com/axios/axios/blob/v1.18.1/LICENSE):
+
+```
+# Copyright (c) 2014-present Matt Zabriskie & Collaborators
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+```
+
 
 ## devDependencies
 
 ### @semantic-release/changelog
 
-This product includes source derived from [@semantic-release/changelog](https://github.com/semantic-release/changelog) ([v6.0.2](https://github.com/semantic-release/changelog/tree/v6.0.2)), distributed under the [MIT License](https://github.com/semantic-release/changelog/blob/v6.0.2/LICENSE):
+This product includes source derived from [@semantic-release/changelog](https://github.com/semantic-release/changelog) ([v6.0.3](https://github.com/semantic-release/changelog/tree/v6.0.3)), distributed under the [MIT License](https://github.com/semantic-release/changelog/blob/v6.0.3/LICENSE):
 
 ```
 MIT License
@@ -102,7 +258,7 @@ SOFTWARE.
 
 ### @semantic-release/commit-analyzer
 
-This product includes source derived from [@semantic-release/commit-analyzer](https://github.com/semantic-release/commit-analyzer) ([v9.0.2](https://github.com/semantic-release/commit-analyzer/tree/v9.0.2)), distributed under the [MIT License](https://github.com/semantic-release/commit-analyzer/blob/v9.0.2/LICENSE):
+This product includes source derived from [@semantic-release/commit-analyzer](https://github.com/semantic-release/commit-analyzer) ([v13.0.1](https://github.com/semantic-release/commit-analyzer/tree/v13.0.1)), distributed under the [MIT License](https://github.com/semantic-release/commit-analyzer/blob/v13.0.1/LICENSE):
 
 ```
 MIT License
@@ -131,7 +287,7 @@ SOFTWARE.
 
 ### @semantic-release/exec
 
-This product includes source derived from [@semantic-release/exec](https://github.com/semantic-release/exec) ([v6.0.3](https://github.com/semantic-release/exec/tree/v6.0.3)), distributed under the [MIT License](https://github.com/semantic-release/exec/blob/v6.0.3/LICENSE):
+This product includes source derived from [@semantic-release/exec](https://github.com/semantic-release/exec) ([v7.1.0](https://github.com/semantic-release/exec/tree/v7.1.0)), distributed under the [MIT License](https://github.com/semantic-release/exec/blob/v7.1.0/LICENSE):
 
 ```
 MIT License
@@ -189,7 +345,7 @@ SOFTWARE.
 
 ### @semantic-release/github
 
-This product includes source derived from [@semantic-release/github](https://github.com/semantic-release/github) ([v8.0.7](https://github.com/semantic-release/github/tree/v8.0.7)), distributed under the [MIT License](https://github.com/semantic-release/github/blob/v8.0.7/LICENSE):
+This product includes source derived from [@semantic-release/github](https://github.com/semantic-release/github) ([v12.0.8](https://github.com/semantic-release/github/tree/v12.0.8)), distributed under the [MIT License](https://github.com/semantic-release/github/blob/v12.0.8/LICENSE):
 
 ```
 MIT License
@@ -218,7 +374,7 @@ SOFTWARE.
 
 ### @semantic-release/npm
 
-This product includes source derived from [@semantic-release/npm](https://github.com/semantic-release/npm) ([v9.0.1](https://github.com/semantic-release/npm/tree/v9.0.1)), distributed under the [MIT License](https://github.com/semantic-release/npm/blob/v9.0.1/LICENSE):
+This product includes source derived from [@semantic-release/npm](https://github.com/semantic-release/npm) ([v13.1.5](https://github.com/semantic-release/npm/tree/v13.1.5)), distributed under the [MIT License](https://github.com/semantic-release/npm/blob/v13.1.5/LICENSE):
 
 ```
 MIT License
@@ -247,7 +403,7 @@ SOFTWARE.
 
 ### @semantic-release/release-notes-generator
 
-This product includes source derived from [@semantic-release/release-notes-generator](https://github.com/semantic-release/release-notes-generator) ([v10.0.3](https://github.com/semantic-release/release-notes-generator/tree/v10.0.3)), distributed under the [MIT License](https://github.com/semantic-release/release-notes-generator/blob/v10.0.3/LICENSE):
+This product includes source derived from [@semantic-release/release-notes-generator](https://github.com/semantic-release/release-notes-generator) ([v14.1.1](https://github.com/semantic-release/release-notes-generator/tree/v14.1.1)), distributed under the [MIT License](https://github.com/semantic-release/release-notes-generator/blob/v14.1.1/LICENSE):
 
 ```
 MIT License
@@ -274,49 +430,14 @@ SOFTWARE.
 
 ```
 
-### axios-retry
-
-This product includes source derived from [axios-retry](https://github.com/softonic/axios-retry) ([v4.1.0](https://github.com/softonic/axios-retry/tree/v4.1.0)), distributed under the [Apache-2.0 License](https://github.com/softonic/axios-retry/blob/v4.1.0/LICENSE):
-
-```
-Copyright 2019 Softonic International S.A.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
-
-### axios
-
-This product includes source derived from [axios](https://github.com/axios/axios) ([v1.6.8](https://github.com/axios/axios/tree/v1.6.8)), distributed under the [MIT License](https://github.com/axios/axios/blob/v1.6.8/LICENSE):
-
-```
-# Copyright (c) 2014-present Matt Zabriskie & Collaborators
-
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-
-```
-
 ### eslint-config-prettier
 
-This product includes source derived from [eslint-config-prettier](https://github.com/prettier/eslint-config-prettier) ([v8.5.0](https://github.com/prettier/eslint-config-prettier/tree/v8.5.0)), distributed under the [MIT License](https://github.com/prettier/eslint-config-prettier/blob/v8.5.0/LICENSE):
+This product includes source derived from [eslint-config-prettier](https://github.com/prettier/eslint-config-prettier) ([v8.10.2](https://github.com/prettier/eslint-config-prettier/tree/v8.10.2)), distributed under the [MIT License](https://github.com/prettier/eslint-config-prettier/blob/v8.10.2/LICENSE):
 
 ```
 The MIT License (MIT)
 
-Copyright (c) 2017, 2018, 2019, 2020, 2021, 2022 Simon Lydell and contributors
+Copyright (c) 2017, 2018, 2019, 2020, 2021, 2022, 2023 Simon Lydell and contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -340,7 +461,7 @@ THE SOFTWARE.
 
 ### eslint-plugin-prettier
 
-This product includes source derived from [eslint-plugin-prettier](https://github.com/prettier/eslint-plugin-prettier) ([v4.2.1](https://github.com/prettier/eslint-plugin-prettier/tree/v4.2.1)), distributed under the [MIT License](https://github.com/prettier/eslint-plugin-prettier/blob/v4.2.1/LICENSE.md):
+This product includes source derived from [eslint-plugin-prettier](https://github.com/prettier/eslint-plugin-prettier) ([v4.2.5](https://github.com/prettier/eslint-plugin-prettier/tree/v4.2.5)), distributed under the [MIT License](https://github.com/prettier/eslint-plugin-prettier/blob/v4.2.5/LICENSE.md):
 
 ```
 # The MIT License (MIT)
@@ -372,7 +493,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 ### eslint
 
-This product includes source derived from [eslint](https://github.com/eslint/eslint) ([v8.29.0](https://github.com/eslint/eslint/tree/v8.29.0)), distributed under the [MIT License](https://github.com/eslint/eslint/blob/v8.29.0/LICENSE):
+This product includes source derived from [eslint](https://github.com/eslint/eslint) ([v8.57.1](https://github.com/eslint/eslint/tree/v8.57.1)), distributed under the [MIT License](https://github.com/eslint/eslint/blob/v8.57.1/LICENSE):
 
 ```
 Copyright OpenJS Foundation and other contributors, <www.openjsf.org>
@@ -6381,7 +6502,7 @@ By: Ika
 
 ### semantic-release-plugin-update-version-in-files
 
-This product includes source derived from [semantic-release-plugin-update-version-in-files](https://github.com/gr2m/semantic-release-plugin-update-version-in-files) ([v1.1.0](https://github.com/gr2m/semantic-release-plugin-update-version-in-files/tree/v1.1.0)), distributed under the [ISC License](https://github.com/gr2m/semantic-release-plugin-update-version-in-files/blob/v1.1.0/LICENSE):
+This product includes source derived from [semantic-release-plugin-update-version-in-files](https://github.com/gr2m/semantic-release-plugin-update-version-in-files) ([v2.1.0](https://github.com/gr2m/semantic-release-plugin-update-version-in-files/tree/v2.1.0)), distributed under the [ISC License](https://github.com/gr2m/semantic-release-plugin-update-version-in-files/blob/v2.1.0/LICENSE):
 
 ```
 Copyright 2019 Gregor Martynus
@@ -6392,9 +6513,38 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 
 ```
 
+### semantic-release
+
+This product includes source derived from [semantic-release](https://github.com/semantic-release/semantic-release) ([v25.0.5](https://github.com/semantic-release/semantic-release/tree/v25.0.5)), distributed under the [MIT License](https://github.com/semantic-release/semantic-release/blob/v25.0.5/LICENSE):
+
+```
+MIT License
+
+Copyright (c) 2017 Contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+```
+
 ### uuid
 
-This product includes source derived from [uuid](https://github.com/uuidjs/uuid) ([v9.0.1](https://github.com/uuidjs/uuid/tree/v9.0.1)), distributed under the [MIT License](https://github.com/uuidjs/uuid/blob/v9.0.1/LICENSE.md):
+This product includes source derived from [uuid](https://github.com/uuidjs/uuid) ([v11.1.1](https://github.com/uuidjs/uuid/tree/v11.1.1)), distributed under the [MIT License](https://github.com/uuidjs/uuid/blob/v11.1.1/LICENSE.md):
 
 ```
 The MIT License (MIT)
@@ -6411,7 +6561,7 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 ### winston
 
-This product includes source derived from [winston](https://github.com/winstonjs/winston) ([v3.13.0](https://github.com/winstonjs/winston/tree/v3.13.0)), distributed under the [MIT License](https://github.com/winstonjs/winston/blob/v3.13.0/LICENSE):
+This product includes source derived from [winston](https://github.com/winstonjs/winston) ([v3.19.0](https://github.com/winstonjs/winston/tree/v3.19.0)), distributed under the [MIT License](https://github.com/winstonjs/winston/blob/v3.19.0/LICENSE):
 
 ```
 Copyright (c) 2010 Charlie Robbins
