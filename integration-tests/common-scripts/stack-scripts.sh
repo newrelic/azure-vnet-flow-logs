@@ -115,7 +115,7 @@ deploy_flowlog_template() {
   az deployment group create \
     --resource-group "${NETWORK_WATCHER_RG}" \
     --name "${RUN_ID}-flowlog" \
-    --template-file "${E2E_DIR}/arm/azuredeploy-e2e-flowlog.json" \
+    --template-file "${INTEGRATION_DIR}/arm/azuredeploy-integration-flowlog.json" \
     --parameters \
       location="${AZURE_REGION}" \
       networkWatcherName="${NETWORK_WATCHER_NAME}" \

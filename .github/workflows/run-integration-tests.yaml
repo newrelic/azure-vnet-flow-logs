@@ -1,6 +1,6 @@
-name: E2E Test Workflow
+name: Integration Test Workflow
 
-# Runs the end-to-end suite (e2e-tests/) against a real Azure environment when a
+# Runs the integration suite (integration-tests/) against a real Azure environment when a
 # pull request is approved, on a monthly schedule, and on manual dispatch.
 # This job checks out and executes arbitrary refs with real Azure/NR secrets
 # present, so check-authorization requires: on pull_request_review, the
@@ -23,7 +23,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-${{ github.event.pull_request.number || github.ref }}
+  group: integration-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -89,7 +89,7 @@ jobs:
             core.info(`Authorized: reviewer ${review.user.login} has admin access.`);
             core.setOutput('authorized', 'true');
 
-  run-e2e:
+  run-integration:
     needs: [check-authorization]
     if: needs.check-authorization.outputs.authorized == 'true'
     runs-on: ubuntu-latest
@@ -113,14 +113,14 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Run e2e tests
+      - name: Run integration tests
         env:
           AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_REGION: centralus
           NR_LICENSE_KEY: ${{ secrets.NR_LICENSE_KEY }}
           NR_QUERY_API_KEY: ${{ secrets.NR_QUERY_API_KEY }}
           NR_ACCOUNT_ID: ${{ secrets.NR_ACCOUNT_ID }}
-        run: npm run test:e2e
+        run: npm run test:integration
 
       - name: Send failure notification to Slack
         if: failure()

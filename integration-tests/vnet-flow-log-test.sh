@@ -2,10 +2,10 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-source "${ROOT_DIR}/e2e-tests/common-scripts/test-configs.cfg"
-source "${ROOT_DIR}/e2e-tests/common-scripts/resource-scripts.sh"
-source "${ROOT_DIR}/e2e-tests/common-scripts/stack-scripts.sh"
-source "${ROOT_DIR}/e2e-tests/common-scripts/logs-scripts.sh"
+source "${ROOT_DIR}/integration-tests/common-scripts/test-configs.cfg"
+source "${ROOT_DIR}/integration-tests/common-scripts/resource-scripts.sh"
+source "${ROOT_DIR}/integration-tests/common-scripts/stack-scripts.sh"
+source "${ROOT_DIR}/integration-tests/common-scripts/logs-scripts.sh"
 
 cleanup() {
   echo "[main] Cleanup start"
@@ -16,7 +16,7 @@ trap cleanup EXIT
 main() {
   require_cmds
 
-  echo "[main] Starting e2e run: ${RUN_ID}"
+  echo "[main] Starting integration run: ${RUN_ID}"
   az account set --subscription "${AZURE_SUBSCRIPTION_ID}"
 
   create_resource_group
@@ -103,7 +103,7 @@ main() {
     exit 1
   }
 
-  echo "[main] E2E test passed (including incremental delivery check)"
+  echo "[main] Integration test passed (including incremental delivery check)"
 }
 
 main "$@"
