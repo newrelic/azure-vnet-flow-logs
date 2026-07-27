@@ -3,7 +3,7 @@ set -euo pipefail
 
 require_cmds() {
   local missing=0
-  for c in az jq curl uuidgen zip ssh-keygen getent; do
+  for c in az jq curl uuidgen zip getent; do
     if ! command -v "$c" >/dev/null 2>&1; then
       echo "Missing required command: $c"
       missing=1
@@ -16,30 +16,6 @@ require_cmds() {
 
 resource_log() {
   echo "[resource] $*" >&2
-}
-
-# Ensure an SSH public key exists at VM_ADMIN_PUBLIC_KEY_PATH for the traffic VM.
-# On a fresh CI runner no key exists, so generate an ephemeral keypair rather than
-# failing. The VM is provisioned and torn down within the run, so the key is
-# throwaway.
-ensure_ssh_key() {
-  if [[ -f "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
-    return 0
-  fi
-
-  local private_key_path
-  private_key_path="${VM_ADMIN_PUBLIC_KEY_PATH%.pub}"
-  if [[ "${private_key_path}" == "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
-    private_key_path="${VM_ADMIN_PUBLIC_KEY_PATH}.key"
-  fi
-
-  resource_log "SSH public key not found at ${VM_ADMIN_PUBLIC_KEY_PATH}; generating an ephemeral keypair"
-  mkdir -p "$(dirname "${private_key_path}")"
-  ssh-keygen -t rsa -b 4096 -f "${private_key_path}" -N "" -q
-  if [[ ! -f "${VM_ADMIN_PUBLIC_KEY_PATH}" ]]; then
-    # ssh-keygen writes <path>.pub next to the private key; align if names differ.
-    cp "${private_key_path}.pub" "${VM_ADMIN_PUBLIC_KEY_PATH}"
-  fi
 }
 
 create_resource_group() {
@@ -108,17 +84,24 @@ generate_traffic() {
   escaped_url=$(printf '%q' "${url}")
   escaped_host_header=$(printf '%q' "${host_header}")
 
-  az vm run-command invoke \
+  # `az vm run-command invoke` exits 0 as long as the RunCommand extension itself
+  # executed, regardless of the remote script's own exit code - the remote
+  # failure only shows up inside the returned JSON's value[0].message. So the
+  # remote script's `exit 1` on failure is cosmetic unless we check that field.
+  local result
+  result=$(az vm run-command invoke \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
     --command-id RunShellScript \
-    --scripts "set -e; url=${escaped_url}; host_header=${escaped_host_header}; success=0; for i in 1 2 3 4 5; do if [[ -n \"\$host_header\" ]]; then if curl -sS -m 10 -H \"Host: \$host_header\" \"\$url\" >/dev/null; then success=1; fi; else if curl -sS -m 10 \"\$url\" >/dev/null; then success=1; fi; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" >/dev/null
+    --scripts "set -e; url=${escaped_url}; host_header=${escaped_host_header}; success=0; for i in 1 2 3 4 5; do if [[ -n \"\$host_header\" ]]; then if curl -sS -m 10 -H \"Host: \$host_header\" \"\$url\" >/dev/null; then success=1; fi; else if curl -sS -m 10 \"\$url\" >/dev/null; then success=1; fi; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" \
+    --query "value[0].message" -o tsv)
+
+  if [[ "${result}" == *"Traffic generation failed"* ]]; then
+    echo "${result}" >&2
+    return 1
+  fi
 
   echo "${marker}"
-}
-
-get_vm_ip() {
-  az vm show -d --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" --query publicIps -o tsv
 }
 
 get_vm_private_ip() {

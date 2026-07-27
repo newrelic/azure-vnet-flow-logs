@@ -40,7 +40,7 @@ or directly:
 - Resource provisioning is ARM-template based: the forwarder uses the product template `arm/azuredeploy-vnetflowlogsforwarder.json`; the traffic VM and flow log use `integration-tests/arm/azuredeploy-integration-traffic.json` and `integration-tests/arm/azuredeploy-integration-flowlog.json`.
 - The forwarder template exposes no deployment outputs, so the scripts discover the deployed resource names (function app, storage accounts, Event Hub namespace) by listing them in the resource group.
 - New Relic validation is scoped to this run's uniquely-named VNet (`virtualNetworkName`), so counts are deterministic and not polluted by unrelated flow-log data.
-- If no SSH public key exists at `VM_ADMIN_PUBLIC_KEY_PATH`, an ephemeral throwaway keypair is generated for the traffic VM.
+- The traffic VM's SSH admin key defaults to the static public key committed at `common-scripts/vm-ssh-key.pub` (`VM_ADMIN_PUBLIC_KEY_PATH`). No matching private key is retained anywhere - it exists solely to satisfy Azure's Linux VM provisioning requirement; the suite only ever reaches the VM via `az vm run-command invoke` (control plane), never SSH.
 
 ## CI
 
@@ -48,7 +48,7 @@ or directly:
 
 Required repository secrets:
 
-- `AZURE_CREDENTIALS` — JSON blob (`clientId`, `clientSecret`, `subscriptionId`, `tenantId`) for `azure/login@v2`; that action has no separate `client-secret` input, only a combined `creds` blob
+- `AZURE_CREDENTIALS` — JSON blob (`clientId`, `clientSecret`, `subscriptionId`, `tenantId`) for `azure/login@v3`; that action has no separate `client-secret` input, only a combined `creds` blob
 - `AZURE_SUBSCRIPTION_ID` — used by the test script itself, separate from the login step
 - `NR_LICENSE_KEY`, `NR_QUERY_API_KEY`, `NR_ACCOUNT_ID` — New Relic ingest + query
 - `SLACK_WEBHOOK_URL` — failure notifications

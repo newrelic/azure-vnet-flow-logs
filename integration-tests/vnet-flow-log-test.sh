@@ -27,11 +27,10 @@ main() {
   build_and_deploy_package
   verify_forwarder_resources
 
-  local marker vm_ip vm_private_ip blob_name
+  local marker vm_private_ip blob_name
   marker=$(generate_traffic)
-  vm_ip=$(get_vm_ip)
   vm_private_ip=$(get_vm_private_ip)
-  echo "[main] Traffic marker: ${marker}; VM public IP: ${vm_ip}; VM private IP: ${vm_private_ip}"
+  echo "[main] Traffic marker: ${marker}; VM private IP: ${vm_private_ip}"
 
   blob_name=$(wait_for_blob)
   echo "[main] First flow log blob: ${blob_name}"

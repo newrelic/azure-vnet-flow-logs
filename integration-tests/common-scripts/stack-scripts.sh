@@ -11,9 +11,9 @@ deploy_forwarder_template() {
   # The template derives location from the resource group, so no location param is passed.
   # Single attempt, no retry: a customer only gets one shot at this, so the test
   # shouldn't paper over template flakiness (e.g. RBAC propagation races) either.
-  local out err_file
+  local err_file
   err_file=$(mktemp)
-  if ! out=$(az deployment group create \
+  if ! az deployment group create \
     --resource-group "${RESOURCE_GROUP}" \
     --name "${FORWARDER_DEPLOYMENT_NAME}" \
     --template-file "${ARM_FORWARDER_TEMPLATE}" \
@@ -27,14 +27,13 @@ deploy_forwarder_template() {
       maxEventBatchSize="${EVENT_HUB_BATCH_SIZE}" \
       functionLogLevel="${FUNCTION_LOG_LEVEL}" \
       flowLogsStorageAccountName="${SOURCE_STORAGE_ACCOUNT_NAME}" \
-    --query properties.outputs -o json 2>"${err_file}"); then
+    >/dev/null 2>"${err_file}"; then
     echo "Forwarder deployment failed:"
     cat "${err_file}"
     rm -f "${err_file}"
     return 1
   fi
   rm -f "${err_file}"
-  echo "${out}" > "${FORWARDER_OUTPUTS_FILE}"
 
   resolve_forwarder_resources
   export SOURCE_STORAGE FUNCTION_APP_NAME EVENTHUB_NAMESPACE EVENTHUB_NAME CURSOR_STORAGE
@@ -80,8 +79,6 @@ resolve_forwarder_resources() {
 }
 
 deploy_traffic_template() {
-  ensure_ssh_key
-
   local vm_key
   vm_key=$(cat "${VM_ADMIN_PUBLIC_KEY_PATH}")
 
@@ -99,11 +96,10 @@ deploy_traffic_template() {
       vmSize="${VM_SIZE}" \
       vmAdminUsername="${VM_ADMIN_USERNAME}" \
       vmAdminPublicKey="${vm_key}" \
-      vmPublicIpName="${VM_PUBLIC_IP_NAME}" \
       vmNicName="${VM_NIC_NAME}" \
       vnetAddressPrefix="${VNET_CIDR}" \
       subnetAddressPrefix="${SUBNET_CIDR}" \
-    --query properties.outputs -o json > "${TRAFFIC_OUTPUTS_FILE}"
+    >/dev/null
 }
 
 deploy_flowlog_template() {
@@ -231,21 +227,6 @@ verify_eventgrid_subscription() {
     echo "No Event Grid subscription found from source storage to Event Hub"
     return 1
   fi
-}
-
-show_deployment_failures() {
-  stack_log "Fetching deployment errors (if any)"
-  az deployment operation group list \
-    --resource-group "${RESOURCE_GROUP}" \
-    --name "${FORWARDER_DEPLOYMENT_NAME}" \
-    --query "[?properties.provisioningState=='Failed'].{target:properties.targetResource.resourceName, status:properties.statusMessage}" \
-    -o table || true
-
-  az deployment operation group list \
-    --resource-group "${RESOURCE_GROUP}" \
-    --name "${TRAFFIC_DEPLOYMENT_NAME}" \
-    --query "[?properties.provisioningState=='Failed'].{target:properties.targetResource.resourceName, status:properties.statusMessage}" \
-    -o table || true
 }
 
 teardown() {

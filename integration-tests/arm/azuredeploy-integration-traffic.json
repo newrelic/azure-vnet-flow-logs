@@ -28,9 +28,6 @@
     "vmAdminPublicKey": {
       "type": "string"
     },
-    "vmPublicIpName": {
-      "type": "string"
-    },
     "vmNicName": {
       "type": "string"
     },
@@ -82,25 +79,12 @@
       }
     },
     {
-      "type": "Microsoft.Network/publicIPAddresses",
-      "apiVersion": "2023-02-01",
-      "name": "[parameters('vmPublicIpName')]",
-      "location": "[parameters('location')]",
-      "sku": {
-        "name": "Standard"
-      },
-      "properties": {
-        "publicIPAllocationMethod": "Static"
-      }
-    },
-    {
       "type": "Microsoft.Network/networkInterfaces",
       "apiVersion": "2023-02-01",
       "name": "[parameters('vmNicName')]",
       "location": "[parameters('location')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]",
-        "[resourceId('Microsoft.Network/publicIPAddresses', parameters('vmPublicIpName'))]"
+        "[resourceId('Microsoft.Network/virtualNetworks', parameters('vnetName'))]"
       ],
       "properties": {
         "ipConfigurations": [
@@ -110,10 +94,7 @@
               "subnet": {
                 "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', parameters('vnetName'), parameters('subnetName'))]"
               },
-              "privateIPAllocationMethod": "Dynamic",
-              "publicIPAddress": {
-                "id": "[resourceId('Microsoft.Network/publicIPAddresses', parameters('vmPublicIpName'))]"
-              }
+              "privateIPAllocationMethod": "Dynamic"
             }
           }
         ]
@@ -169,15 +150,5 @@
         }
       }
     }
-  ],
-  "outputs": {
-    "vmName": {
-      "type": "string",
-      "value": "[parameters('vmName')]"
-    },
-    "vnetName": {
-      "type": "string",
-      "value": "[parameters('vnetName')]"
-    }
-  }
+  ]
 }
