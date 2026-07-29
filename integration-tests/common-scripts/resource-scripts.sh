@@ -93,7 +93,25 @@ generate_traffic() {
     --resource-group "${RESOURCE_GROUP}" \
     --name "${VM_NAME}" \
     --command-id RunShellScript \
-    --scripts "set -e; url=${escaped_url}; host_header=${escaped_host_header}; success=0; for i in 1 2 3 4 5; do if [[ -n \"\$host_header\" ]]; then if curl -sS -m 10 -H \"Host: \$host_header\" \"\$url\" >/dev/null; then success=1; fi; else if curl -sS -m 10 \"\$url\" >/dev/null; then success=1; fi; fi; done; if [[ \$success -ne 1 ]]; then echo 'Traffic generation failed: all outbound requests failed' >&2; exit 1; fi; echo ${marker}" \
+    --scripts \
+      'set -e' \
+      "url=${escaped_url}" \
+      "host_header=${escaped_host_header}" \
+      'success=0' \
+      'for i in 1 2 3 4 5; do' \
+      '  if [[ -n "$host_header" ]]; then' \
+      '    curl -sS -m 10 -H "Host: $host_header" "$url" >/dev/null && success=1' \
+      '  else' \
+      '    curl -sS -m 10 "$url" >/dev/null && success=1' \
+      '  fi' \
+      '  [[ $success -eq 1 ]] && break' \
+      '  sleep 2' \
+      'done' \
+      'if [[ $success -ne 1 ]]; then' \
+      "  echo 'Traffic generation failed: all outbound requests failed' >&2" \
+      '  exit 1' \
+      'fi' \
+      "echo ${marker}" \
     --query "value[0].message" -o tsv)
 
   if [[ "${result}" == *"Traffic generation failed"* ]]; then

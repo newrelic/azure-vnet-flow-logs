@@ -65,14 +65,16 @@ wait_for_nr_logs() {
     nr_log "NR query attempt $((attempt + 1))"
     local out
     out=$(nr_query "${nrql}")
-    validate_nr_response "${out}" || return 1
-    echo "${out}" > "${NR_RESULTS_FILE}"
 
-    local count
-    count=$(echo "${out}" | jq '[.data.actor.account.nrql.results[]] | length' 2>/dev/null || echo 0)
-    if [[ "${count}" -gt 0 ]]; then
-      nr_log "NR results found: ${count}"
-      return 0
+    if validate_nr_response "${out}"; then
+      echo "${out}" > "${NR_RESULTS_FILE}"
+
+      local count
+      count=$(echo "${out}" | jq '[.data.actor.account.nrql.results[]] | length' 2>/dev/null || echo 0)
+      if [[ "${count}" -gt 0 ]]; then
+        nr_log "NR results found: ${count}"
+        return 0
+      fi
     fi
 
     sleep "${sleep_s}"
@@ -121,7 +123,13 @@ nr_count_for() {
   local nrql="$1"
   local nr_json
   nr_json=$(nr_query "${nrql}")
-  validate_nr_response "${nr_json}" || return 1
+  # A transient GraphQL/network failure here shouldn't propagate as an empty
+  # count - callers compare this against a baseline with `-gt`/`-ge`, and an
+  # empty string there is a bash arithmetic error, not just "no increase yet".
+  if ! validate_nr_response "${nr_json}"; then
+    echo 0
+    return 0
+  fi
   echo "${nr_json}" | jq -r '.["data"].actor.account.nrql.results[0].count // 0'
 }
 

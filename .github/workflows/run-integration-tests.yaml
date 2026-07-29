@@ -97,8 +97,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
         with:
-          # On a review, test the PR head so the deployed function is the PR's code.
-          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          # On a review, check out the exact SHA the admin approved (not the PR's
+          # current head, which could have moved to unreviewed commits by now).
+          ref: ${{ github.event.review.commit_id || github.ref }}
 
       - name: Use Node.js 22.x
         uses: actions/setup-node@v7
