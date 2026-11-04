@@ -1,0 +1,64 @@
+name: 'Trivy vs Grype Scan Comparison'
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/trivy-scan.yml'
+  schedule:
+    # Run every day at 6:30 PM UTC (12 AM IST)
+    - cron: "30 18 * * *"
+
+jobs:
+  trivy_fs_scan:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          version: 'v0.76.1'
+          ignore-unfixed: true
+          severity: 'HIGH,CRITICAL'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: trivy
+
+  grype_fs_scan:
+    name: Grype Filesystem Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Run Grype directory scan
+        id: grype
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
+        with:
+          path: '.'
+          only-fixed: true
+          severity-cutoff: high
+          fail-build: false
+          output-format: sarif
+
+      - name: Upload Grype results to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype
