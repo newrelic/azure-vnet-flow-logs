@@ -11,16 +11,10 @@ on:
     # Run every day at 6:30 PM UTC (12 AM IST)
     - cron: "30 18 * * *"
 
-permissions:
-  contents: read
-
 jobs:
   trivy_fs_scan:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
 
     steps:
       - name: Checkout code
@@ -46,9 +40,6 @@ jobs:
   grype_fs_scan:
     name: Grype Filesystem Scan
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
 
     steps:
       - name: Checkout code
