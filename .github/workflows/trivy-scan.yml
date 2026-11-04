@@ -1,21 +1,33 @@
-name: 'Trivy Security Scans'
+name: 'Trivy vs Grype Scan Comparison'
 
 on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/trivy-scan.yml'
   schedule:
-    # Run every day at 12 AM IST (which is 6:30 PM UTC)
-    - cron: "46 7 * * *"
+    # Run every day at 6:30 PM UTC (12 AM IST)
+    - cron: "30 18 * * *"
+
+permissions:
+  contents: read
 
 jobs:
   trivy_fs_scan:
     name: Trivy Filesystem Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1 # v0.35.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -24,40 +36,37 @@ jobs:
           format: 'sarif'
           output: 'trivy-fs-results.sarif'
 
-      - name: Upload Trivy filesystem results to GitHub Security tab
+      - name: Upload Trivy results to GitHub Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'trivy-fs-results.sarif'
+          category: trivy
 
-  trivy_image_scan:
-    name: Trivy Docker Image Scan
+  grype_fs_scan:
+    name: Grype Filesystem Scan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
-      - name: Build and load Docker image
-        uses: docker/build-push-action@v6
+      - name: Run Grype directory scan
+        id: grype
+        uses: anchore/scan-action@27805bf3b4e84b4a5c980df22ed233c00390a439 # v7.4.2
         with:
-          context: ./logs-function
-          file: ./logs-function/Dockerfile
-          load: true
-          tags: oci-log-integration-scan:latest
+          path: '.'
+          only-fixed: true
+          severity-cutoff: high
+          fail-build: false
+          output-format: sarif
 
-      - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'image'
-          image-ref: 'oci-log-integration-scan:latest'
-          ignore-unfixed: true
-          severity: 'HIGH,CRITICAL'
-          format: 'sarif'
-          output: 'trivy-image-results.sarif'
-
-      - name: Upload Trivy image results to GitHub Security tab
+      - name: Upload Grype results to GitHub Security tab
         if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: 'trivy-image-results.sarif'
+          sarif_file: ${{ steps.grype.outputs.sarif }}
+          category: grype
