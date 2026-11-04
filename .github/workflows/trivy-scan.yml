@@ -25,6 +25,7 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          version: 'v0.76.1'
           ignore-unfixed: true
           severity: 'HIGH,CRITICAL'
           format: 'sarif'
